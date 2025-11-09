@@ -1,0 +1,14 @@
+#!/bin/bash
+# Git pre-commit hook for bunfig validation
+# Install: cp scripts/git-hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+echo "🔍 Running bunfig validation..."
+
+if ! bun validate:bunfig; then
+  echo "❌ Bunfig validation failed. Commit aborted."
+  exit 1
+fi
+
+echo "✅ Bunfig validation passed"
+exit 0
+
