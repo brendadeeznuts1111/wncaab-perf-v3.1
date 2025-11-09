@@ -1,0 +1,21 @@
+# bunfig.toml - Remote Index v14.2
+
+# Bun v1.3.2 Immunity: Explicit linker/auto config for breaking change protection
+[IMMUNITY:hoisted-disable] # Grepable: immunity-hoisted-disable
+
+[remote]
+# Remote index URL (must be HTTPS)
+index = "https://cdn.syndicate.com/wncaab-index.txt"
+
+# Local fallback index path
+fallback = "./.scan.index"
+
+# Enable URL validation
+validation = true
+
+# Timeout for remote fetch (milliseconds) - P1: Default 30s for production hardening
+timeout = 30000
+
+[debug]
+editor = "code"
+

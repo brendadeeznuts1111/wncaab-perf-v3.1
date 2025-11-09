@@ -1,0 +1,88 @@
+# bunfig.schema.yaml - Validation v3.2
+
+debug:
+  editor:
+    type: string
+    enum: ["code", "subl", "nvim", "vim", "emacs", "webstorm", "idea"]
+    required: false
+
+run:
+  bun:
+    type: boolean
+    default: true
+  silent:
+    type: boolean
+    default: false
+  shell:
+    type: string
+    required: false
+
+test:
+  coverage:
+    type: boolean
+    default: false
+  rerunEach:
+    type: integer
+    min: 0
+    max: 100
+  randomize:
+    type: boolean
+    default: false
+  seed:
+    type: integer
+    condition: { key: "randomize", value: true }
+
+install:
+  registry:
+    type: string
+    pattern: "^https?://"
+  optional:
+    type: boolean
+  dev:
+    type: boolean
+  peer:
+    type: boolean
+  production:
+    type: boolean
+  exact:
+    type: boolean
+  saveTextLockfile:
+    type: boolean
+  auto:
+    type: string
+    enum: ["auto", "force", "disable", "fallback"]
+  frozenLockfile:
+    type: boolean
+  dryRun:
+    type: boolean
+  globalDir:
+    type: string
+    pattern: "^[~./]"
+  globalBinDir:
+    type: string
+    pattern: "^[~./]"
+  minimumReleaseAge:
+    type: integer
+    min: 0
+  minimumReleaseAgeExcludes:
+    type: array
+    items:
+      type: string
+
+remote:
+  index:
+    type: string
+    pattern: "^https://"
+    required: false
+  fallback:
+    type: string
+    required: false
+  timeout:
+    type: integer
+    min: 1000
+    max: 60000
+    default: 30000
+  validation:
+    type: boolean
+    default: true
+

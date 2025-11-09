@@ -1,0 +1,29 @@
+# bun-ai.toml - AUTO-IMMUNITY Core v1.4
+
+[install]
+linker = "ai-hoisted"          # Grok-enforced: ["ai-hoisted", "ai-isolated", "hoisted", "isolated"]
+auto = "ai-disable"            # Grok-enforced: ["ai-disable", "ai-enable", "disable", "enable"]
+frozenLockfile = true
+registry = "https://registry.npmjs.org/"  # Regex pattern: ^https?://.+
+
+[test]
+coverage = true
+coverageThreshold = 0.95       # AI-minimum: 0.85
+
+[run]
+bun = true                     # Auto-alias node→bun
+
+[ai]
+predictDrift = 0.99            # Auto-healing threshold
+grokEndpoint = "xai-grok"      # Semantic prophecy engine
+schemaVersion = "1.4.0"
+autoHeal = true                # Enable automatic config healing
+
+[grep]
+patterns = [
+  "\\[AI-IMMUNITY:[^]]+\\]",
+  "\\[ai-immunity-[a-z-]+-score-[0-9.]+\\]"
+]
+colors = "match:fg:amber:style:bold"
+
+# [AI-IMMUNITY:ai-hoisted-ai-disable][SCORE:0.97]
