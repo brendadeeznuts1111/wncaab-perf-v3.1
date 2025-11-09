@@ -18,5 +18,3 @@ timeout = 30000
 
 [debug]
 editor = "code"
-
-test

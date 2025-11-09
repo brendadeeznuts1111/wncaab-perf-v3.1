@@ -50,6 +50,7 @@
     "bun:pr": "bun run scripts/bun-pr-test.ts",
     "bun:pr-asan": "bun run scripts/bun-pr-test.ts --asan",
     "bun:pr-version": "bun run scripts/bun-pr-test.ts --version",
+    "atomic:pr": "bun run scripts/atomic-pr.js",
     "version": "bun run scripts/version-tracker.js",
     "version:check": "bun run scripts/version-tracker.js"
   },

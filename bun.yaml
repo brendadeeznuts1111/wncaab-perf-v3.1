@@ -1,0 +1,25 @@
+# bun.yaml - Performance Visualization v3.1
+perf:
+  visualization:
+    schema:
+      domain: [perf-vis, bun-native]
+      scope: [scan, api]
+      state: [idle, proc]
+      time:
+        pattern: '^\d+\.\d+(ms|s)?$'
+      memory:
+        # STRICT: Requires space before unit, unit is required (not optional)
+        pattern: '^\d+\.?\d* (MB|GB|KB)$'
+    defaults:
+      domain: perf-vis
+      state: idle
+    grep:
+      patterns:
+        all-tags: '\[PERF:([A-Z-]+)-([A-Z-]+)-([idle|proc])-(\d+\.\d+(ms|s)?)\]'
+        by-domain: '\[PERF:perf-vis\]'
+      rg-flags: '--type md --no-heading --with-filename --colors match:fg:cyan:style:bold --pcre2'
+  validate:
+    hooks:
+      - parse-perf: true
+      - grep-index: true
+
