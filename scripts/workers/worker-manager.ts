@@ -9,9 +9,25 @@
  * @module scripts/workers/worker-manager
  */
 
-import { Worker } from "bun";
+// Worker is a global in Bun, no need to import
+// import { Worker } from "bun";
 import { registerShutdownHandler } from "../../lib/process/compat.ts";
 import { log } from "../../lib/production-utils.ts";
+
+// Type declaration for Worker (Bun global)
+declare const Worker: {
+  new (scriptURL: string | URL, options?: {
+    env?: Record<string, string>;
+    name?: string;
+  }): Worker;
+};
+
+interface Worker {
+  onerror: ((error: ErrorEvent) => void) | null;
+  addEventListener(type: 'error', listener: (event: ErrorEvent) => void): void;
+  postMessage(message: any): void;
+  terminate(): void;
+}
 
 interface WorkerRespawnInfo {
   workerId: string;
@@ -47,6 +63,7 @@ class ResilientWorkerManager {
   };
   
   private eventLoopMonitorInterval?: Timer;
+  private eventLoopMonitorActive: boolean = false;
   private workerScriptPath: URL;
   private maxRespawnAttempts: number = 5;
   private initialRespawnDelay: number = 1000; // 1 second
@@ -68,11 +85,14 @@ class ResilientWorkerManager {
    * TES-PERF-001.9: Event Loop Monitoring (Bun.peek())
    * Note: Bun.peek() is for promise inspection, not event loop monitoring.
    * We use Bun.nanoseconds() to measure tick durations instead.
+   * 
+   * Uses setImmediate() recursion to measure actual event loop ticks,
+   * not setTimeout intervals which can be delayed.
    */
   private startEventLoopMonitoring(): void {
     let lastTickEnd = Bun.nanoseconds();
     
-    this.eventLoopMonitorInterval = setInterval(() => {
+    const measureTick = () => {
       const tickStart = Bun.nanoseconds();
       const tickDuration = tickStart - lastTickEnd;
       
@@ -136,7 +156,13 @@ class ResilientWorkerManager {
       }
       
       lastTickEnd = Bun.nanoseconds();
-    }, 100); // Check every 100ms
+      
+      // Schedule next measurement using setImmediate (actual event loop tick)
+      setImmediate(measureTick);
+    };
+    
+    // Start monitoring
+    setImmediate(measureTick);
   }
   
   /**
@@ -315,8 +341,8 @@ class ResilientWorkerManager {
       await this.terminateAllWorkers();
       
       // Stop event loop monitoring
-      if (this.eventLoopMonitorInterval) {
-        clearInterval(this.eventLoopMonitorInterval);
+      if (this.eventLoopMonitorActive) {
+        this.eventLoopMonitorActive = false;
       }
       
       log('info', 'worker_manager_shutdown_complete');
