@@ -1309,6 +1309,34 @@ function generateDashboard() {
     </div>
     
     <div class="section">
+      <h2>🎨 Color System</h2>
+      <div class="grid">
+        <div class="card">
+          <h4>📊 Color Usage</h4>
+          <p><strong>Build-time validated colors</strong></p>
+          <div class="stat-display">
+            <div class="stat-item">
+              <span class="stat-label">Total Colors:</span>
+              <span class="stat-value" id="color-total">Loading...</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Used:</span>
+              <span class="stat-value" id="color-used">Loading...</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-label">Unused:</span>
+              <span class="stat-value" id="color-unused" style="color: #28a745;">Loading...</span>
+            </div>
+          </div>
+          <div class="card-actions">
+            <a href="/color-palette.html" target="_blank" class="btn-link">🎨 View Palette →</a>
+            <a href="#" onclick="loadColorReport(); return false;" class="btn-link">📊 View Report →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section">
       <h2>⚙️ Configs</h2>
       <div class="grid">
         <div class="card">

@@ -126,14 +126,54 @@ export const WNCAAB_COLORS = {
 export type ColorName = keyof typeof WNCAAB_COLORS;
 
 /**
- * Type-safe color getter
- * Returns color value with full type safety
+ * Usage tracking - tracks which colors are actually used
+ * Helps identify dead code and optimize bundle size
+ */
+const USAGE_TRACKER = new Set<ColorName>();
+
+/**
+ * Type-safe color getter with usage tracking
+ * Returns color value with full type safety and tracks usage
  * 
  * @param name - Color name (type-safe, prevents typos)
  * @returns Hex color string
  */
 export function getColor(name: ColorName): string {
+  USAGE_TRACKER.add(name); // Track usage at build time
   return WNCAAB_COLORS[name];
+}
+
+/**
+ * Generate color usage report
+ * Identifies unused colors to help maintain the system
+ * 
+ * @returns Report with used/unused colors
+ */
+export function generateColorReport(): {
+  total: number;
+  used: string[];
+  unused: string[];
+  unusedCount: number;
+} {
+  const allColors = Object.keys(WNCAAB_COLORS) as ColorName[];
+  const usedColors = Array.from(USAGE_TRACKER);
+  const unused = allColors.filter(c => !usedColors.includes(c));
+  
+  const report = {
+    total: allColors.length,
+    used: usedColors,
+    unused,
+    unusedCount: unused.length,
+  };
+  
+  if (unused.length > 0) {
+    console.warn(`[Color System] 🚨 Unused colors detected: ${unused.join(', ')}`);
+    console.warn(`[Color System] 💡 Consider removing these to reduce bundle size`);
+  } else {
+    console.log(`[Color System] ✅ All ${allColors.length} colors are actively used`);
+  }
+  
+  return report;
 }
 
 // Validate contrast ratios at build time

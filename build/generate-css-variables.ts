@@ -9,7 +9,7 @@
  * @module build/generate-css-variables
  */
 
-import { generateCssVariables, WNCAAB_COLORS, getContrastColor } from "../macros/color-macro.ts";
+import { generateCssVariables, WNCAAB_COLORS, getContrastColor, generateColorReport } from "../macros/color-macro.ts";
 
 // Generate CSS variables
 const cssVariables = generateCssVariables();
@@ -147,6 +147,20 @@ await Bun.write("public/color-palette.html", paletteHtml);
 
 console.log("✅ Generated color palette visualizer:");
 console.log("   📄 public/color-palette.html");
+
+// Generate and display usage report
+const usageReport = generateColorReport();
+console.log("\n📊 Color Usage Report:");
+console.log(`   Total colors: ${usageReport.total}`);
+console.log(`   Used colors: ${usageReport.used.length}`);
+console.log(`   Unused colors: ${usageReport.unusedCount}`);
+
+if (usageReport.unused.length > 0) {
+  console.log(`   Unused: ${usageReport.unused.join(', ')}`);
+} else {
+  console.log("   ✅ All colors are actively used!");
+}
+
 console.log("\n💡 Usage:");
 console.log('   <link rel="stylesheet" href="/wncaab-variables.css">');
 console.log('   <a href="/color-palette.html">View Color Palette</a>');

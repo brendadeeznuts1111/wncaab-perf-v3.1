@@ -1,0 +1,55 @@
+name: Color System Health Check
+
+on:
+  pull_request:
+    paths:
+      - 'macros/color-macro.ts'
+      - 'macros/*.ts'
+      - 'build/generate-css-variables.ts'
+      - 'public/*.css'
+      - 'scripts/color-audit.ts'
+  push:
+    branches: [main]
+    paths:
+      - 'macros/color-macro.ts'
+      - 'macros/*.ts'
+      - 'build/generate-css-variables.ts'
+      - 'public/*.css'
+
+jobs:
+  color-health:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+      
+      - name: Validate colors
+        run: bun run validate:colors
+        
+      - name: Generate CSS variables
+        run: bun run build:css-variables
+        
+      - name: Check for unused colors
+        run: |
+          OUTPUT=$(bun run validate:colors 2>&1)
+          echo "$OUTPUT"
+          
+          if echo "$OUTPUT" | grep -q "Unused colors detected"; then
+            echo "🚨 Found unused colors. Please remove them."
+            exit 1
+          fi
+          
+          echo "✅ All colors are actively used"
+      
+      - name: Upload color report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: color-report
+          path: public/color-palette.html
+          retention-days: 7
+
