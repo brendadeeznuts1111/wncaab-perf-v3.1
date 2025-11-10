@@ -6,6 +6,10 @@
  * @module scripts/color-audit
  */
 
+// Import macros that use colors to ensure they're tracked
+import '../macros/header-macro.ts';
+import '../macros/footer-macro.ts';
+
 import { generateColorReport } from '../macros/color-macro.ts';
 
 console.log("📊 Weekly Color System Audit");
