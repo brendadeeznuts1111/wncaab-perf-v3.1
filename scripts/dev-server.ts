@@ -988,9 +988,10 @@ function generateDashboard() {
   const devEndpoints = endpoints.dev.endpoints.map(e => createEndpointLink(e, endpoints.dev.base)).join('\n');
   
   const version = safeVersion;
-  const repoUrl = REPO_URL;
-  const issuesUrl = `${REPO_URL}/issues`;
-  const prsUrl = `${REPO_URL}/pulls`;
+  // ✅ Ensure URLs are properly formatted (no trailing slashes)
+  const repoUrl = REPO_URL.replace(/\/$/, '');
+  const issuesUrl = `${repoUrl}/issues`;
+  const prsUrl = `${repoUrl}/pulls`;
   
   return `<!DOCTYPE html>
 <html lang="en">
