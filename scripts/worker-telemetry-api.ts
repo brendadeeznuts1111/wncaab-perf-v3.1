@@ -11,6 +11,7 @@
 /// <reference types="bun-types" />
 
 import type { ServerWebSocket } from 'bun';
+import { Worker } from 'bun';
 
 interface WorkerState {
   id: string;
@@ -212,35 +213,39 @@ class WorkerRegistry {
       return null;
     }
 
-    // ✅ Fixed: Request snapshot via IPC (non-blocking)
-    worker.postMessage({ type: 'heap-snapshot', id });
-
     // Capture state for fallback
     const state = this.workers.get(id);
 
     // ✅ Fixed: Create streaming response with timeout
+    // ✅ Fixed: Attach listener BEFORE sending message to prevent race condition
     const snapshotStream = new ReadableStream({
       async start(controller) {
         try {
+          // ✅ Fixed: Create promise and attach listener BEFORE sending message
+          // Pattern: Create promise → Attach listener → Send message → Await promise
+          const snapshotPromise = new Promise<{ type: string; id: string; data?: string | ArrayBuffer }>((resolve) => {
+            const timeout = setTimeout(() => {
+              resolve({ type: 'timeout', id });
+            }, 5000); // 5 second timeout
+            
+            const handler = (event: MessageEvent) => {
+              const msgData = event.data as any;
+              if (msgData?.type === 'heap-snapshot-data' && msgData?.id === id) {
+                clearTimeout(timeout);
+                worker.removeEventListener('message', handler as any);
+                resolve(msgData);
+              }
+            };
+            
+            // ✅ Fixed: Attach listener BEFORE sending message
+            worker.addEventListener('message', handler as any);
+            
+            // ✅ Fixed: Send message AFTER listener is attached
+            worker.postMessage({ type: 'heap-snapshot', id });
+          });
+          
           // Wait for snapshot data from worker (with 5-second timeout)
-          const snapshotData = await Promise.race([
-            new Promise<{ type: string; id: string; data?: string | ArrayBuffer }>((resolve) => {
-              const timeout = setTimeout(() => {
-                resolve({ type: 'timeout', id });
-              }, 5000); // 5 second timeout
-              
-              const handler = (event: MessageEvent) => {
-                const msgData = event.data as any;
-                if (msgData?.type === 'heap-snapshot-data' && msgData?.id === id) {
-                  clearTimeout(timeout);
-                  worker.removeEventListener('message', handler as any);
-                  resolve(msgData);
-                }
-              };
-              
-              worker.addEventListener('message', handler as any);
-            }),
-          ]);
+          const snapshotData = await snapshotPromise;
 
           if (snapshotData.type === 'timeout') {
             // Timeout fallback: return minimal snapshot
@@ -405,19 +410,56 @@ class WorkerRegistry {
 // Global registry instance
 const registry = new WorkerRegistry();
 
+// ✅ Fixed: CORS origin whitelist for worker telemetry (sensitive endpoint)
+// ✅ Bun-native: Case-insensitive matching using URL parsing (zero imports)
+const ALLOWED_HOSTS = ['localhost', '127.0.0.1'];
+const ALLOWED_PORTS = ['3000', '3002'];
+
+/**
+ * Get CORS headers based on request origin
+ * ✅ Fixed: Whitelist origins instead of wildcard for security
+ * ✅ Bun-native: Case-insensitive URL parsing (no imports)
+ */
+function getCorsHeaders(req: Request): HeadersInit {
+  const origin = req.headers.get('Origin');
+  let corsOrigin: string | null = null;
+  
+  if (origin) {
+    try {
+      // ✅ Bun-native: Use URL parsing (built-in, zero imports)
+      const originUrl = new URL(origin);
+      const hostname = originUrl.hostname.toLowerCase();
+      const port = originUrl.port || (originUrl.protocol === 'https:' ? '443' : '80');
+      
+      // Case-insensitive hostname matching
+      const isAllowedHost = ALLOWED_HOSTS.some(host => host.toLowerCase() === hostname);
+      const isAllowedPort = ALLOWED_PORTS.includes(port);
+      
+      if (isAllowedHost && isAllowedPort) {
+        corsOrigin = origin; // Use original origin (preserves case)
+      }
+    } catch {
+      // Invalid origin URL, deny access
+      corsOrigin = null;
+    }
+  }
+  
+  return {
+    'Content-Type': 'application/json',
+    ...(corsOrigin ? { 'Access-Control-Allow-Origin': corsOrigin } : {}),
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+  };
+}
+
 // API Server
 const server = Bun.serve({
   port: 3000,
   async fetch(req) {
     const url = new URL(req.url);
 
-    // CORS headers
-    const headers = {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-    };
+    // ✅ Fixed: CORS headers with origin whitelist
+    const headers = getCorsHeaders(req);
 
     // Handle OPTIONS preflight
     if (req.method === 'OPTIONS') {
@@ -473,6 +515,28 @@ const server = Bun.serve({
       if (!id) {
         return new Response(
           JSON.stringify({ error: 'Missing worker ID' }),
+          { headers, status: 400 }
+        );
+      }
+
+      // ✅ Fixed: Path traversal validation - prevent malicious worker ID manipulation
+      // ✅ Bun-native: Zero-import validation using string methods only
+      // Worker IDs are generated as 'w_${timestamp}_${index}' or UUID format
+      const isValidWorkerId = (workerId: string): boolean => {
+        // Block path traversal characters without regex (zero imports)
+        if (workerId.includes('/') || workerId.includes('\\') || workerId.includes('..')) {
+          return false;
+        }
+        // Basic length check (prevent extremely long IDs)
+        if (workerId.length === 0 || workerId.length > 100) {
+          return false;
+        }
+        return true;
+      };
+      
+      if (!isValidWorkerId(id)) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid worker ID format' }),
           { headers, status: 400 }
         );
       }

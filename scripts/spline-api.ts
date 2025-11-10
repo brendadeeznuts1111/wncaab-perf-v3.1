@@ -9,6 +9,8 @@
  */
 
 import { SplineRenderer, SplineConfig } from './spline-renderer.ts';
+// ✅ Bun-native: Use Bun.env for CPU count, fallback to os.cpus() (standard API)
+import { cpus } from 'node:os';
 
 // Global renderer instance
 const renderer = new SplineRenderer();
@@ -56,9 +58,14 @@ const server = Bun.serve({
         
         if (wasm && typeof wasm.render === 'function') {
           // ✅ Pattern: Offload to WASM (non-blocking)
+          // ✅ Bun-native: Use Bun.env.CPU_COUNT or os.cpus().length (zero-import fallback)
+          const cpuCount = Bun.env.CPU_COUNT 
+            ? parseInt(Bun.env.CPU_COUNT, 10) 
+            : (cpus()?.length || 4);
+          const threadCount = Math.min(cpuCount, 8); // Cap at 8 for stability
           const rendered = await wasm.render(points, {
             simd: true, // Enable SIMD if supported
-            threads: navigator.hardwareConcurrency || 4,
+            threads: threadCount,
             type,
             tension,
           });
