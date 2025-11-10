@@ -194,7 +194,7 @@ function parseKeyValue(key: string, value: string, args: CliArgs): void {
   if (argKey === 'conflict' || argKey === 'entropy' || argKey === 'tension') {
     const num = parseFloat(value);
     if (!isNaN(num)) {
-      (args as any)[argKey] = num;
+      (args as Record<string, number | undefined>)[argKey] = num;
     }
   } else if (argKey === 'format') {
     args.format = value as OutputFormat;
@@ -219,7 +219,7 @@ function parseShortForm(arg: string, args: CliArgs): void {
   // ✅ Cache parseFloat result and validate
   const value = parseFloat(arg.slice(2));
   if (!isNaN(value)) {
-    (args as any)[argKey] = value;
+    (args as Record<string, number | undefined>)[argKey] = value;
   }
 }
 
@@ -274,7 +274,7 @@ function parseKeyValuePair(arg: string, argv: string[], index: number, args: Cli
   if (argKey === 'conflict' || argKey === 'entropy' || argKey === 'tension') {
     const num = parseFloat(nextArg);
     if (!isNaN(num)) {
-      (args as any)[argKey] = num;
+      (args as Record<string, number | undefined>)[argKey] = num;
       return true;
     }
   } else if (argKey === 'format') {
@@ -362,6 +362,7 @@ ${result.meta.conflict},${result.meta.entropy},${result.meta.tension},${result.c
 
 /**
  * Format EdgeRelation result as table
+ * ✅ Uses Bun.stringWidth() for proper Unicode/emoji-aware alignment
  * @param result - EdgeRelation result from mapEdgeRelation
  * @returns Table-formatted string
  */
@@ -369,14 +370,35 @@ function formatTable(result: EdgeRelation): string {
   const emoji = RELATION_EMOJI[result.meta.relation];
   const opacityPercent = Math.round(result.opacity * 100);
   
+  // ✅ Use Bun.stringWidth() for proper Unicode/emoji-aware padding
+  // This ensures correct alignment when strings contain emojis or wide Unicode characters
+  // Performance: ~16-66ns for typical strings (very fast, native implementation)
+  // Options:
+  // - countAnsiEscapeCodes: false (default) - ignores ANSI codes (perfect for terminal display)
+  // - ambiguousIsNarrow: false - counts emojis as 2 chars wide (correct for terminal alignment)
+  // [#REF] https://bun.com/docs/runtime/utils#bun-stringwidth
+  const padToWidth = (str: string, width: number, padChar = ' '): string => {
+    const strWidth = Bun.stringWidth(str, { 
+      ambiguousIsNarrow: false // Emojis count as 2 chars for proper terminal alignment
+    });
+    const padding = Math.max(0, width - strWidth);
+    return str + padChar.repeat(padding);
+  };
+  
+  const conflictStr = result.meta.conflict.toFixed(3);
+  const entropyStr = result.meta.entropy.toFixed(3);
+  const tensionStr = result.meta.tension.toFixed(3);
+  const relationStr = padToWidth(result.meta.relation, 20);
+  const visualNoteStr = padToWidth(result.meta.visualNote.substring(0, 45), 45);
+  
   return `
 ┌─────────────────────────────────────────────────────────────┐
 │ ${emoji} Tension Mapping Result                              │
 ├─────────────────────────────────────────────────────────────┤
 │ Parameters:                                                 │
-│   Conflict:  ${result.meta.conflict.toFixed(3).padStart(7)}                                    │
-│   Entropy:   ${result.meta.entropy.toFixed(3).padStart(7)}                                    │
-│   Tension:   ${result.meta.tension.toFixed(3).padStart(7)}                                    │
+│   Conflict:  ${padToWidth(conflictStr, 7)}                                    │
+│   Entropy:   ${padToWidth(entropyStr, 7)}                                    │
+│   Tension:   ${padToWidth(tensionStr, 7)}                                    │
 ├─────────────────────────────────────────────────────────────┤
 │ Visual Properties:                                           │
 │   Color:     ${result.color.HEX} (${result.color.hsl})                    │
@@ -384,8 +406,8 @@ function formatTable(result: EdgeRelation): string {
 │   Width:     ${result.width}px                                              │
 ├─────────────────────────────────────────────────────────────┤
 │ Metadata:                                                   │
-│   Relation:  ${result.meta.relation.padEnd(20)}                            │
-│   Note:      ${result.meta.visualNote.substring(0, 45).padEnd(45)}         │
+│   Relation:  ${relationStr}                            │
+│   Note:      ${visualNoteStr}         │
 └─────────────────────────────────────────────────────────────┘
 `;
 }

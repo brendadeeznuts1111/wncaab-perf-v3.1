@@ -13,7 +13,7 @@
  * - Routes property handles all routing (static, file, async handlers, parameter routes)
  * - Fetch handler only handles unmatched requests (404)
  * - Route precedence: Exact > Parameter > Wildcard > Catch-all
- *   Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+ *   [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
  * 
  * Routing Architecture:
  * 1. Static Responses - Zero-allocation dispatch (15% performance improvement)
@@ -24,14 +24,14 @@
  *    - Zero memory allocation after initialization
  *    - Cached for server lifetime
  *    - Reload with server.reload(options)
- *    - Reference: https://bun.com/docs/runtime/http/routing#static-responses
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#static-responses
  * 
  * 2. HTML Imports - Automatic asset bundling with HMR
  *    - /tension (HTML import)
  *    - /tension-map → redirects to /tension (static redirect)
  *    - Development (bun --hot): Assets bundled on-demand at runtime with HMR
  *    - Production (bun build --target=bun): Resolves to pre-built manifest object
- *    - Reference: https://bun.com/docs/runtime/http/server#html-imports
+ *    - [#REF] https://bun.com/docs/runtime/http/server#html-imports
  * 
  * 3. File Routes - Generated from static-routes.ts manifest
  *    - All static files defined in scripts/static-routes.ts
@@ -63,14 +63,14 @@
  *              .get("Range")?.split("=").at(-1)?.split("-").map(Number) || [0, Infinity];
  *            return new Response(Bun.file(path).slice(start, end));
  *        - Best for: Large files, dynamic content, user uploads, files that change frequently
- *    - Reference: https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
- *    - Reference: https://bun.com/docs/runtime/http/routing#streaming-files
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#streaming-files
  * 
  * 4. Async Route Handlers - All API routes in routes property
  *    - All handlers return Promise<Response> (async/await pattern)
  *    - Server object available as second parameter: async (req, server) => { ... }
  *    - Uses BunRequest which extends Request (method, url, headers, body, etc.)
- *    - Reference: https://bun.com/docs/runtime/http/routing#asynchronous-routes
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#asynchronous-routes
  * 
  *    API Endpoints:
  *    - GET  /api/dev/endpoints      → List all API endpoints (async handler)
@@ -110,7 +110,7 @@
  *    - Supports multiple parameters: '/api/:service/:endpoint/:id'
  *    - Percent-encoded values automatically decoded, Unicode supported
  *    - Invalid unicode replaced with \uFFFD (U+FFFD replacement character)
- *    - Reference: https://bun.com/docs/runtime/http/routing#type-safe-route-parameters
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#type-safe-route-parameters
  * 
  *    Bun's pattern (automatic inference):
  *    ```typescript
@@ -131,12 +131,12 @@
  * 6. Wildcard Routes - Matches paths under prefix
  *    - /api/* (API catch-all for unmatched API routes)
  *    - Precedence: Exact > Parameter > Wildcard > Catch-all
- *    - Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
  * 
  * 7. Global Catch-All Route - Matches all unmatched routes
  *    - /* (Global catch-all for all unmatched routes)
  *    - Precedence: Exact > Parameter > Wildcard > Catch-all
- *    - Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
  * 
  *    REQUIRED Pattern (explicit type + satisfies constraint):
  *    ```typescript
@@ -165,7 +165,7 @@
  *    - Promise-based responses are supported
  *    - Server object available as second argument (server.requestIP, server.timeout)
  *    - Note: With catch-all route (/*), most unmatched requests are handled by routes
- *    - Reference: https://bun.com/docs/runtime/http/routing#fetch-request-handler
+ *    - [#REF] https://bun.com/docs/runtime/http/routing#fetch-request-handler
  * 
  *    Basic pattern:
  *    ```typescript
@@ -252,29 +252,29 @@
  *     - CLI flag takes precedence over all environment variables
  *   - Hostname: HOSTNAME env var or defaults to "0.0.0.0"
  *   - Random port: Set port to 0 for random available port
- *   - Reference: https://bun.com/docs/runtime/http/server#changing-the-port-and-hostname
- *   - Reference: https://bun.com/docs/runtime/http/server#configuring-a-default-port
+ *   - [#REF] https://bun.com/docs/runtime/http/server#changing-the-port-and-hostname
+ *   - [#REF] https://bun.com/docs/runtime/http/server#configuring-a-default-port
  * - Idle timeout configuration (IDLE_TIMEOUT env var, defaults to 120 seconds)
- *   - Reference: https://bun.com/docs/runtime/http/server#idletimeout
+ *   - [#REF] https://bun.com/docs/runtime/http/server#idletimeout
  * - Graceful shutdown on SIGINT/SIGTERM
  * - Hot route reloading support via server.reload()
  * - Server lifecycle methods: stop(), ref(), unref(), reload()
- *   - See: https://bun.com/docs/runtime/http/server#server-lifecycle-methods
- *   - See: https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
- *   - See: https://bun.com/docs/runtime/http/server#server-reload
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-lifecycle-methods
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-reload
  * - Per-request controls: server.timeout(), server.requestIP()
- *   - See: https://bun.com/docs/runtime/http/server#per-request-controls
+ *   - [#REF] https://bun.com/docs/runtime/http/server#per-request-controls
  * - Server metrics: server.pendingRequests, server.pendingWebSockets
- *   - See: https://bun.com/docs/runtime/http/server#server-metrics
- *   - See: https://bun.com/docs/runtime/http/server#server-pendingrequests-and-server-pendingwebsockets
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-metrics
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-pendingrequests-and-server-pendingwebsockets
  * - WebSocket subscriber count: server.subscriberCount(topic)
- *   - See: https://bun.com/docs/runtime/http/server#server-subscribercount-topic
+ *   - [#REF] https://bun.com/docs/runtime/http/server#server-subscribercount-topic
  * - Error handling: error handler for unhandled exceptions
- *   - See: https://bun.com/docs/runtime/http/server#practical-example-rest-api
+ *   - [#REF] https://bun.com/docs/runtime/http/server#practical-example-rest-api
  * - Performance: Bun.serve handles ~2.5x more requests/second than Node.js
  *   - Bun's router uses SIMD-accelerated parameter decoding and JavaScriptCore structure caching
- *   - Reference: https://bun.com/docs/runtime/http/routing
- *   - See: https://bun.com/docs/runtime/http/server#benchmarks
+ *   - [#REF] https://bun.com/docs/runtime/http/routing
+ *   - [#REF] https://bun.com/docs/runtime/http/server#benchmarks
  * 
  * Bun Performance Optimizations (v1.1.x+)
  * 
@@ -454,12 +454,12 @@
  * - GET  /ready                  → Readiness check (static response)
  * 
  * Alternative syntax: This file can also use export default syntax
- * See: https://bun.com/docs/runtime/http/server#export-default-syntax
+ * [#REF] https://bun.com/docs/runtime/http/server#export-default-syntax
  */
 
 import { mapEdgeRelation } from '../macros/tension-map.ts';
 import { gaugeWNBATOR, formatGaugeResult } from '../macros/womens-sports-gauge.ts';
-import { autoMaparse } from '../cli/ai-maparse.ts';
+import { autoMaparse, type MaparseResult } from '../cli/ai-maparse.ts';
 import { validateThreshold } from '../macros/validate-threshold.ts';
 import { HEADER_HTML } from '../macros/header-macro.ts';
 import { FOOTER_HTML } from '../macros/footer-macro.ts';
@@ -606,7 +606,7 @@ type RouteHandler<T extends string> = (req: BunRequest<T>) => Response | Promise
 // - assets: Dependency graph for scripts/styles in the HTML
 // - Development: Live bundler middleware for HMR
 // - Production: Pre-built manifest reference
-// See: https://bun.com/docs/runtime/http/server#html-imports
+// [#REF] https://bun.com/docs/runtime/http/server#html-imports
 import tensionPage from '../templates/tension.html';
 
 // ============================================================================
@@ -689,6 +689,34 @@ let workerApiAvailable = false;
 })();
 
 // ============================================================================
+// String Width Utilities (Unicode/Emoji-aware)
+// ============================================================================
+
+/**
+ * Pad string to specified width using Bun.stringWidth() for Unicode/emoji-aware alignment
+ * 
+ * Performance: ~16-66ns for typical strings (very fast, native implementation)
+ * 
+ * Options:
+ * - countAnsiEscapeCodes: false (default) - ignores ANSI codes (perfect for terminal display)
+ * - ambiguousIsNarrow: false - counts emojis as 2 chars wide (correct for terminal alignment)
+ * 
+ * [#REF] https://bun.com/docs/runtime/utils#bun-stringwidth
+ * 
+ * @param str - String to pad
+ * @param width - Target display width
+ * @param padChar - Character to use for padding (default: ' ')
+ * @returns Padded string with correct Unicode/emoji-aware width
+ */
+function padToWidth(str: string, width: number, padChar = ' '): string {
+  const strWidth = Bun.stringWidth(str, { 
+    ambiguousIsNarrow: false // Emojis count as 2 chars for proper terminal alignment
+  });
+  const padding = Math.max(0, width - strWidth);
+  return str + padChar.repeat(padding);
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -723,11 +751,19 @@ const tensionCache = new SimpleCache<string>(); // Cache ETag hashes
 // Metrics tracking functions are now imported from lib/metrics.ts
 
 /**
+ * ONNX Model interface (placeholder for future ONNX Runtime integration)
+ */
+interface ONNXModel {
+  run?: (input: Float32Array | Record<string, unknown>) => Promise<unknown>;
+  [key: string]: unknown;
+}
+
+/**
  * ONNX Model Cache for AI endpoints
  * ✅ Pattern: Model caching + ONNX Runtime (ready for future ML models)
  */
 interface ModelCache {
-  model: any; // ONNX model instance (when available)
+  model: ONNXModel | null; // ONNX model instance (when available)
   loadedAt: number;
   warmupComplete: boolean;
   inferenceCount: number;
@@ -741,9 +777,9 @@ const modelCache = new Map<string, ModelCache>();
  * ✅ Pattern: Model caching + ONNX Runtime
  * @param modelPath - Path to ONNX model file
  * @param modelName - Cache key for the model
- * @returns Cached model instance
+ * @returns Cached model instance or null if not available
  */
-async function loadONNXModel(modelPath: string, modelName: string = 'default'): Promise<any> {
+async function loadONNXModel(modelPath: string, modelName: string = 'default'): Promise<ONNXModel | null> {
   // Check cache first
   const cached = modelCache.get(modelName);
   if (cached && cached.model) {
@@ -793,8 +829,8 @@ async function loadONNXModel(modelPath: string, modelName: string = 'default'): 
  */
 async function runAIInference<T>(
   modelName: string,
-  inputData: any,
-  fallbackFn: (data: any) => T
+  inputData: unknown,
+  fallbackFn: (data: unknown) => T
 ): Promise<{ result: T; inferenceTime: number; modelUsed: 'onnx' | 'fallback' }> {
   const inferenceStart = performance.now();
   
@@ -972,7 +1008,10 @@ function generateDashboard() {
   const colorReport = generateColorReport();
   
   // Escape user-controlled content to prevent XSS attacks
+  // ✅ Uses Bun.escapeHTML() - optimized for large input (480 MB/s - 20 GB/s on M1X)
   // Bun.escapeHTML() converts <, >, &, ", ' to HTML entities
+  // Handles non-string types automatically (converts to string first)
+  // [#REF] https://bun.com/docs/runtime/utils#bun-escapehtml
   const safeVersion = escapeHtml(packageInfo.version) || '3.1.0';
   const safeDescription = escapeHtml(packageInfo.description) || 'WNCAAB Dev Server Dashboard - Unified API, Config, and Worker Telemetry';
   const safeAuthor = escapeHtml(packageInfo.author) || 'WNCAAB Syndicate';
@@ -1452,6 +1491,63 @@ function generateDashboard() {
   </div>
   
   <script>
+    // ============================================================================
+    // Constants and Utilities
+    // ============================================================================
+    const MODAL_Z_INDEX = 1000;
+    const MODAL_BACKDROP_COLOR = 'rgba(0,0,0,0.7)';
+    const WORKER_API_PORT_VALUE = ${WORKER_API_PORT};
+    const STATUS_REFRESH_INTERVAL = 5000; // 5 seconds
+    const MODAL_DEFAULT_WIDTH = 900;
+    const MODAL_NARROW_WIDTH = 600;
+    
+    // JSON syntax highlighting utility (reusable - eliminates duplication)
+    function highlightJSON(jsonString) {
+      return jsonString
+        .replace(/(".*?"):/g, '<span style="color:#d63384;font-weight:600;">$1</span>:')
+        .replace(/: ("[^"]*")/g, ': <span style="color:#0d6efd;">$1</span>')
+        .replace(/: (true|false|null)/g, ': <span style="color:#198754;font-weight:600;">$1</span>')
+        .replace(/: (\d+\.?\d*)/g, ': <span style="color:#fd7e14;font-weight:600;">$1</span>')
+        .replace(/(\[|\])/g, '<span style="color:#6f42c1;">$1</span>')
+        .replace(/(\{|\})/g, '<span style="color:#20c997;">$1</span>');
+    }
+    
+    // Modal creation utility (reusable - reduces duplication)
+    // Supports optional width parameter for different modal sizes
+    function createModal(title, content, options = {}) {
+      const {
+        width = MODAL_DEFAULT_WIDTH,
+        onClose = null
+      } = options;
+      
+      const modal = document.createElement('div');
+      modal.style.cssText = \`position:fixed;top:0;left:0;right:0;bottom:0;background:\${MODAL_BACKDROP_COLOR};z-index:\${MODAL_Z_INDEX};display:flex;align-items:center;justify-content:center;padding:20px;\`;
+      modal.onclick = (e) => {
+        if (e.target === modal) {
+          if (onClose) onClose();
+          modal.remove();
+        }
+      };
+      
+      modal.innerHTML = \`
+        <div style="background:white;padding:30px;border-radius:16px;max-width:\${width}px;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid #e0e0e0;padding-bottom:15px;">
+            <h2 style="color:#667eea;font-size:1.8em;margin:0;font-weight:700;">\${title}</h2>
+            <button onclick="this.closest('div').parentElement.remove()" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;transition:all 0.2s;">✕ Close</button>
+          </div>
+          \${content}
+        </div>
+      \`;
+      document.body.appendChild(modal);
+      return modal;
+    }
+    
+    // Error handling utility (standardizes error handling)
+    function handleError(error, defaultMessage = 'An error occurred') {
+      const message = error instanceof Error ? error.message : String(error);
+      return message || defaultMessage;
+    }
+    
     // Color system stats (from build-time report)
     // Note: Colors are tracked when macros are imported, so stats reflect actual usage
     const colorStats = {
@@ -1478,65 +1574,56 @@ function generateDashboard() {
     
     // Load color report modal
     function loadColorReport() {
-      const modal = document.createElement('div');
-      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-      
       const unusedList = colorStats.unusedColors.length > 0 
         ? '<ul style="list-style: disc; margin-left: 20px;"><li>' + colorStats.unusedColors.join('</li><li>') + '</li></ul>'
         : '<p style="color: #28a745; font-weight: 600;">✅ All colors are actively used!</p>';
       
-      modal.innerHTML = \`
-        <div style="background:white;padding:30px;border-radius:16px;max-width:600px;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid #e0e0e0;padding-bottom:15px;">
-            <h2 style="color:#667eea;font-size:1.8em;margin:0;font-weight:700;">📊 Color Usage Report</h2>
-            <button onclick="this.closest('div').parentElement.remove()" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;transition:all 0.2s;">✕ Close</button>
+      const content = \`
+        <div style="margin-bottom:20px;">
+          <h3 style="color:#333;margin-bottom:10px;">📈 Statistics</h3>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px;">
+            <div style="padding:15px;background:#f8f9fa;border-radius:8px;text-align:center;">
+              <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Total</div>
+              <div style="font-size:2em;font-weight:800;color:#667eea;">\${colorStats.total}</div>
+            </div>
+            <div style="padding:15px;background:#e7f5e7;border-radius:8px;text-align:center;">
+              <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Used</div>
+              <div style="font-size:2em;font-weight:800;color:#28a745;">\${colorStats.used.length}</div>
+            </div>
+            <div style="padding:15px;background:\${colorStats.unused > 0 ? '#fff4e6' : '#e7f5e7'};border-radius:8px;text-align:center;">
+              <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Reserved</div>
+              <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#fd7e14' : '#28a745'};">\${colorStats.unused}</div>
+            </div>
           </div>
-          <div style="margin-bottom:20px;">
-            <h3 style="color:#333;margin-bottom:10px;">📈 Statistics</h3>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px;">
-              <div style="padding:15px;background:#f8f9fa;border-radius:8px;text-align:center;">
-                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Total</div>
-                <div style="font-size:2em;font-weight:800;color:#667eea;">\${colorStats.total}</div>
-              </div>
-              <div style="padding:15px;background:#e7f5e7;border-radius:8px;text-align:center;">
-                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Used</div>
-                <div style="font-size:2em;font-weight:800;color:#28a745;">\${colorStats.used.length}</div>
-              </div>
-              <div style="padding:15px;background:\${colorStats.unused > 0 ? '#fff4e6' : '#e7f5e7'};border-radius:8px;text-align:center;">
-                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Reserved</div>
-                <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#fd7e14' : '#28a745'};">\${colorStats.unused}</div>
-              </div>
-            </div>
-            <h3 style="color:#333;margin-bottom:10px;">📋 Reserved Colors</h3>
-            \${unusedList}
-            <div style="margin-top:20px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
-              <strong style="color:#fd7e14;display:block;margin-bottom:5px;">✅ Decision: KEEP all colors</strong>
-              <span style="color:#666;font-size:0.9em;">These colors are documented as reserved for future features. See <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#fd7e14;">macros/color-macro.ts</code> for rationale.</span>
-            </div>
-            <div style="margin-top:15px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
-              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Rationale</strong>
-              <ul style="color:#666;font-size:0.9em;margin:0;padding-left:20px;">
-                <li>650 bytes is negligible vs design system benefits</li>
-                <li>Prevents color drift in future features</li>
-                <li>No rebuild needed when adding dashboards/alerts</li>
-                <li>Next review: 2025-04-15</li>
-              </ul>
-            </div>
-            <div style="margin-top:15px;padding:15px;background:#e7f5e7;border-radius:8px;border-left:4px solid #28a745;">
-              <strong style="color:#28a745;display:block;margin-bottom:5px;">📊 Detailed Analysis</strong>
-              <span style="color:#666;font-size:0.9em;">Run <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run audit:colors</code> for full usage report</span>
-            </div>
+          <h3 style="color:#333;margin-bottom:10px;">📋 Reserved Colors</h3>
+          \${unusedList}
+          <div style="margin-top:20px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
+            <strong style="color:#fd7e14;display:block;margin-bottom:8px;">✅ Decision: KEEP all colors</strong>
+            <span style="color:#666;font-size:0.9em;">These colors are documented as reserved for future features. See <a href="https://github.com/brendadeeznuts1111/wncaab-perf-v3.1/blob/main/macros/color-macro.ts" target="_blank" style="color:#fd7e14;text-decoration:underline;font-weight:600;">macros/color-macro.ts</a> for full documentation and rationale.</span>
+          </div>
+          <div style="margin-top:15px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+            <strong style="color:#0d6efd;display:block;margin-bottom:8px;">💡 Rationale</strong>
+            <ul style="color:#666;font-size:0.9em;margin:0;padding-left:20px;">
+              <li>650 bytes is negligible vs design system benefits</li>
+              <li>Prevents color drift in future features</li>
+              <li>No rebuild needed when adding dashboards/alerts</li>
+              <li>Next review: 2025-04-15</li>
+            </ul>
+          </div>
+          <div style="margin-top:15px;padding:15px;background:#e7f5e7;border-radius:8px;border-left:4px solid #28a745;">
+            <strong style="color:#28a745;display:block;margin-bottom:8px;">📊 Detailed Analysis</strong>
+            <span style="color:#666;font-size:0.9em;">Run <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;font-family:monospace;">bun run audit:colors</code> for full usage report</span>
           </div>
         </div>
       \`;
-      document.body.appendChild(modal);
+      
+      createModal('📊 Reserved Colors', content, { width: MODAL_NARROW_WIDTH });
     }
     
     // Auto-refresh every 5 seconds
     let refreshInterval = setInterval(() => {
       updateStatus();
-    }, 5000);
+    }, STATUS_REFRESH_INTERVAL);
     
     // Fetch and update status
     async function updateStatus() {
@@ -1595,8 +1682,8 @@ function generateDashboard() {
     function updateServiceStatus(id, status) {
       const element = document.getElementById(id);
       if (element) {
-        element.className = 'status ' + (status === 'running' ? 'active' : 'inactive');
-        element.textContent = status === 'running' ? 'Running' : 'Not Running';
+        element.className = 'status-badge ' + (status === 'running' ? 'status-active' : 'status-inactive');
+        element.textContent = status === 'running' ? '✅ Running' : '❌ Not Running';
       }
     }
     
@@ -1612,47 +1699,35 @@ function generateDashboard() {
     async function loadConfigs() {
       try {
         const response = await fetch('/api/dev/configs');
+        if (!response.ok) {
+          throw new Error(\`Config API returned \${response.status}: \${response.statusText}\`);
+        }
         const configs = await response.json();
         
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        
         const configStr = JSON.stringify(configs, null, 2);
-        const highlighted = configStr
-          .replace(/(".*?"):/g, '<span style="color:#d63384;font-weight:600;">$1</span>:')
-          .replace(/: ("[^"]*")/g, ': <span style="color:#0d6efd;">$1</span>')
-          .replace(/: (true|false|null)/g, ': <span style="color:#198754;font-weight:600;">$1</span>')
-          .replace(/: (\d+\.?\d*)/g, ': <span style="color:#fd7e14;font-weight:600;">$1</span>')
-          .replace(/(\[|\])/g, '<span style="color:#6f42c1;">$1</span>')
-          .replace(/(\{|\})/g, '<span style="color:#20c997;">$1</span>');
+        const highlighted = highlightJSON(configStr);
         
-        modal.innerHTML = \`
-          <div style="background:white;padding:30px;border-radius:16px;max-width:900px;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid #e0e0e0;padding-bottom:15px;">
-              <h2 style="color:#667eea;font-size:1.8em;margin:0;font-weight:700;">⚙️ Configuration Files</h2>
-              <button onclick="this.closest('div').parentElement.remove()" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;transition:all 0.2s;">✕ Close</button>
+        const content = \`
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
+            <div style="padding:15px;background:#f8f9fa;border-radius:8px;border-left:4px solid #667eea;">
+              <strong style="color:#667eea;display:block;margin-bottom:5px;">📄 bunfig.toml</strong>
+              <span style="color:#666;font-size:0.9em;">Runtime configuration</span>
             </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px;">
-              <div style="padding:15px;background:#f8f9fa;border-radius:8px;border-left:4px solid #667eea;">
-                <strong style="color:#667eea;display:block;margin-bottom:5px;">📄 bunfig.toml</strong>
-                <span style="color:#666;font-size:0.9em;">Runtime configuration</span>
-              </div>
-              <div style="padding:15px;background:#f8f9fa;border-radius:8px;border-left:4px solid #764ba2;">
-                <strong style="color:#764ba2;display:block;margin-bottom:5px;">🤖 bun-ai.toml</strong>
-                <span style="color:#666;font-size:0.9em;">AI immunity configuration</span>
-              </div>
-            </div>
-            <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;border:2px solid #333;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3);">\${highlighted}</pre>
-            <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
-              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
-              <span style="color:#666;font-size:0.9em;">You can also access this via <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">GET /api/dev/configs</code></span>
+            <div style="padding:15px;background:#f8f9fa;border-radius:8px;border-left:4px solid #764ba2;">
+              <strong style="color:#764ba2;display:block;margin-bottom:5px;">🤖 bun-ai.toml</strong>
+              <span style="color:#666;font-size:0.9em;">AI immunity configuration</span>
             </div>
           </div>
+          <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;border:2px solid #333;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3);">\${highlighted}</pre>
+          <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+            <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
+            <span style="color:#666;font-size:0.9em;">You can also access this via <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">GET /api/dev/configs</code></span>
+          </div>
         \`;
-        document.body.appendChild(modal);
+        
+        createModal('⚙️ Configuration Files', content);
       } catch (error) {
-        alert('Failed to load configs: ' + error.message);
+        alert('Failed to load configs: ' + handleError(error, 'Unknown error'));
       }
     }
     
@@ -1660,56 +1735,48 @@ function generateDashboard() {
     async function loadWorkers() {
       try {
         const response = await fetch('/api/dev/workers');
+        if (!response.ok) {
+          throw new Error(\`Worker API returned \${response.status}: \${response.statusText}\`);
+        }
         const data = await response.json();
         
-        const modal = document.createElement('div');
-        modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-        
         const dataStr = JSON.stringify(data, null, 2);
-        const highlighted = dataStr
-          .replace(/(".*?"):/g, '<span style="color:#d63384;font-weight:600;">$1</span>:')
-          .replace(/: ("[^"]*")/g, ': <span style="color:#0d6efd;">$1</span>')
-          .replace(/: (true|false|null)/g, ': <span style="color:#198754;font-weight:600;">$1</span>')
-          .replace(/: (\d+\.?\d*)/g, ': <span style="color:#fd7e14;font-weight:600;">$1</span>')
-          .replace(/(\[|\])/g, '<span style="color:#6f42c1;">$1</span>')
-          .replace(/(\{|\})/g, '<span style="color:#20c997;">$1</span>');
+        const highlighted = highlightJSON(dataStr);
         
         const summary = data.summary || {};
-        modal.innerHTML = \`
-          <div style="background:white;padding:30px;border-radius:16px;max-width:900px;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid #e0e0e0;padding-bottom:15px;">
-              <h2 style="color:#667eea;font-size:1.8em;margin:0;font-weight:700;">👷 Worker Registry</h2>
-              <button onclick="this.closest('div').parentElement.remove()" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;transition:all 0.2s;">✕ Close</button>
+        const hasError = data.error || response.status === 503;
+        const errorMessage = hasError ? '<div style="margin-bottom:20px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;"><strong style="color:#fd7e14;display:block;margin-bottom:5px;">⚠️ Worker API Not Available</strong><span style="color:#666;font-size:0.9em;">The worker telemetry API is not running. Start it with <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#fd7e14;">bun run scripts/worker-telemetry-api.ts</code> or check if it\'s running on port \${WORKER_API_PORT_VALUE}.</span></div>' : '';
+        
+        const content = \`
+          \${errorMessage}
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:25px;">
+            <div style="padding:15px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:10px;text-align:center;">
+              <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Total</div>
+              <div style="font-size:2em;font-weight:800;">\${summary.total || 0}</div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:15px;margin-bottom:25px;">
-              <div style="padding:15px;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:white;border-radius:10px;text-align:center;">
-                <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Total</div>
-                <div style="font-size:2em;font-weight:800;">\${summary.total || 0}</div>
-              </div>
-              <div style="padding:15px;background:linear-gradient(135deg,#28a745 0%,#20c997 100%);color:white;border-radius:10px;text-align:center;">
-                <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Idle</div>
-                <div style="font-size:2em;font-weight:800;">\${summary.idle || 0}</div>
-              </div>
-              <div style="padding:15px;background:linear-gradient(135deg,#ffc107 0%,#ff9800 100%);color:#333;border-radius:10px;text-align:center;">
-                <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Working</div>
-                <div style="font-size:2em;font-weight:800;">\${summary.working || 0}</div>
-              </div>
-              <div style="padding:15px;background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);color:white;border-radius:10px;text-align:center;">
-                <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Error</div>
-                <div style="font-size:2em;font-weight:800;">\${summary.error || 0}</div>
-              </div>
+            <div style="padding:15px;background:linear-gradient(135deg,#28a745 0%,#20c997 100%);color:white;border-radius:10px;text-align:center;">
+              <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Idle</div>
+              <div style="font-size:2em;font-weight:800;">\${summary.idle || 0}</div>
             </div>
-            <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;border:2px solid #333;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3);">\${highlighted}</pre>
-            <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
-              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
-              <span style="color:#666;font-size:0.9em;">Access via <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">GET /api/dev/workers</code> or WebSocket at <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">ws://localhost:${WORKER_API_PORT}/ws/workers/telemetry</code></span>
+            <div style="padding:15px;background:linear-gradient(135deg,#ffc107 0%,#ff9800 100%);color:#333;border-radius:10px;text-align:center;">
+              <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Working</div>
+              <div style="font-size:2em;font-weight:800;">\${summary.working || 0}</div>
+            </div>
+            <div style="padding:15px;background:linear-gradient(135deg,#dc3545 0%,#c82333 100%);color:white;border-radius:10px;text-align:center;">
+              <div style="font-size:0.9em;opacity:0.9;margin-bottom:5px;">Error</div>
+              <div style="font-size:2em;font-weight:800;">\${summary.error || 0}</div>
             </div>
           </div>
+          <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;border:2px solid #333;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3);">\${highlighted}</pre>
+          <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+            <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
+            <span style="color:#666;font-size:0.9em;">Access via <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">GET /api/dev/workers</code> or WebSocket at <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">ws://localhost:\${WORKER_API_PORT_VALUE}/ws/workers/telemetry</code></span>
+          </div>
         \`;
-        document.body.appendChild(modal);
+        
+        createModal('👷 Worker Registry', content);
       } catch (error) {
-        alert('Failed to load workers: ' + error.message);
+        alert('Failed to load workers: ' + handleError(error, 'Unknown error'));
       }
     }
     
@@ -1752,7 +1819,7 @@ const IDLE_TIMEOUT_SECONDS = parseInt(process.env.IDLE_TIMEOUT || String(DEFAULT
 
 // Generate static routes at startup (buffers immutable files in memory)
 // Static routes provide 15% performance improvement for immutable files
-// Reference: https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
+// [#REF] https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
 const staticRoutes = await generateStaticRoutes();
 
 const devServer = Bun.serve({
@@ -1761,7 +1828,7 @@ const devServer = Bun.serve({
   hostname: HOSTNAME,
   
   // Idle timeout: maximum time a connection can be idle before closing (in seconds)
-  // See: https://bun.com/docs/runtime/http/server#idletimeout
+  // [#REF] https://bun.com/docs/runtime/http/server#idletimeout
   idleTimeout: IDLE_TIMEOUT_SECONDS, // 2 minutes default
   
   development: {
@@ -1784,7 +1851,7 @@ const devServer = Bun.serve({
   //   "/api/*": () => new Response("API catch-all"),            // Wildcard route
   //   "/*": () => new Response("Global catch-all"),            // Catch-all route
   // 
-  // Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+  // [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
   routes: {
     // 1. Exact static routes (highest priority)
     // Static responses - Zero-allocation dispatch
@@ -1808,7 +1875,7 @@ const devServer = Bun.serve({
     //   Redirects: Response.redirect("https://example.com")
     //   Static JSON: Response.json({ version: "1.0.0" })
     // 
-    // Reference: https://bun.com/docs/runtime/http/routing#static-responses
+    // [#REF] https://bun.com/docs/runtime/http/routing#static-responses
     '/favicon.ico': new Response(null, { status: 204 }),
     '/health': new Response('OK'),
     '/ready': new Response('Ready', {
@@ -1847,7 +1914,7 @@ const devServer = Bun.serve({
     // - Uses pre-built manifest in production (bun build --target=bun)
     // - Sets correct Content-Type headers
     // - Handles asset fingerprinting and cache busting
-    // See: https://bun.com/docs/runtime/http/server#html-imports
+    // [#REF] https://bun.com/docs/runtime/http/server#html-imports
     '/tension': tensionPage,
     
     // 3. File Routes - Generated from static-routes.ts manifest
@@ -1883,7 +1950,7 @@ const devServer = Bun.serve({
     //       return new Response(Bun.file(path).slice(start, end));
     //   - Best for: Large files, dynamic content, user uploads, files that change frequently
     // 
-    // Reference: https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
+    // [#REF] https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
     ...Object.fromEntries(
       staticRoutes.map(r => [r.path, r.handler])
     ),
@@ -1903,8 +1970,8 @@ const devServer = Bun.serve({
     // - Async/await: async () => { await ...; return Response.json(...); }
     // - Promise: () => new Promise(resolve => { ... resolve(Response.json(...)); })
     // - Direct fetch: () => fetch("https://example.com")
-    // Reference: https://bun.com/docs/runtime/http/routing#asynchronous-routes
-    // Reference: https://bun.com/docs/runtime/http/routing#promise
+    // [#REF] https://bun.com/docs/runtime/http/routing#asynchronous-routes
+    // [#REF] https://bun.com/docs/runtime/http/routing#promise
     // Reference: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise
     // 
     // Async/await pattern (recommended):
@@ -2006,11 +2073,14 @@ const devServer = Bun.serve({
       try {
         // ✅ Bun-Specific Optimization: Use SharedMap for zero-copy worker state
         // Pattern: Atomic read (no serialization cost)
-        let state: Record<string, any> | null = null;
+        let state: Record<string, WorkerInfo> | null = null;
         
         if (workerRegistryMap && typeof workerRegistryMap.get === 'function') {
           // SharedMap: Atomic read (no serialization cost)
-          state = workerRegistryMap.get('state');
+          const rawState = workerRegistryMap.get('state');
+          if (rawState && typeof rawState === 'object') {
+            state = rawState as Record<string, WorkerInfo>;
+          }
         }
         
         // Fallback to worker registry if SharedMap doesn't have state
@@ -2019,6 +2089,28 @@ const devServer = Bun.serve({
           // Cache in SharedMap for next read (if SharedMap is available)
           if (workerRegistryMap && typeof workerRegistryMap.set === 'function') {
             workerRegistryMap.set('state', state);
+          }
+        }
+        
+        // If still no state, try fetching from external worker API
+        if (!state || Object.keys(state).length === 0) {
+          try {
+            const response = await fetch(`http://localhost:${WORKER_API_PORT}/api/workers/registry`, {
+              signal: AbortSignal.timeout(WORKER_API_CHECK_TIMEOUT),
+            });
+            if (response.ok) {
+              const rawState = await response.json();
+              if (rawState && typeof rawState === 'object') {
+                state = rawState as Record<string, WorkerInfo>;
+                // Cache in SharedMap for next read (if SharedMap is available)
+                if (workerRegistryMap && typeof workerRegistryMap.set === 'function') {
+                  workerRegistryMap.set('state', state);
+                }
+              }
+            }
+          } catch (error) {
+            // Worker API not available - return empty state
+            state = {};
           }
         }
         
@@ -2043,6 +2135,26 @@ const devServer = Bun.serve({
             }),
             'Cache-Control': 'no-cache', // ✅ Pattern: Cache-Control header
           },
+        });
+      } catch (error) {
+        // Return empty state if all methods fail
+        return Response.json({ 
+          workers: {}, 
+          summary: { total: 0, idle: 0, working: 0, error: 0, total_queue_depth: 0 },
+          error: 'Worker API not available',
+        }, {
+          headers: {
+            ...apiHeaders({
+              domain: 'dev',
+              scope: 'workers',
+              version: 'v2.1',
+              contentType: 'application/json',
+              includeTiming: true,
+              startTime,
+            }),
+            'Cache-Control': 'no-cache',
+          },
+          status: 503,
         });
       } finally {
         trackRequestEnd();
@@ -2089,7 +2201,14 @@ const devServer = Bun.serve({
         } else if (format === 'table') {
           const emoji = result.meta.relation === 'temperate' ? '🟢' : result.meta.relation === 'extreme' ? '🔴' : '🟠';
           const opacityPercent = Math.round(result.opacity * 100);
-          responseBody = `\n┌─────────────────────────────────────────────────────────────┐\n│ ${emoji} Tension Mapping Result                              │\n├─────────────────────────────────────────────────────────────┤\n│ Parameters:                                                 │\n│   Conflict:  ${result.meta.conflict.toFixed(3).padStart(7)}                                    │\n│   Entropy:   ${result.meta.entropy.toFixed(3).padStart(7)}                                    │\n│   Tension:   ${result.meta.tension.toFixed(3).padStart(7)}                                    │\n├─────────────────────────────────────────────────────────────┤\n│ Visual Properties:                                           │\n│   Color:     ${result.color.HEX} (${result.color.hsl})                    │\n│   Opacity:   ${opacityPercent}% (${result.opacity.toFixed(3)})                              │\n│   Width:     ${result.width}px                                              │\n├─────────────────────────────────────────────────────────────┤\n│ Metadata:                                                   │\n│   Relation:  ${result.meta.relation.padEnd(20)}                            │\n│   Note:      ${result.meta.visualNote.substring(0, 45).padEnd(45)}         │\n└─────────────────────────────────────────────────────────────┘\n`;
+          
+          const conflictStr = result.meta.conflict.toFixed(3);
+          const entropyStr = result.meta.entropy.toFixed(3);
+          const tensionStr = result.meta.tension.toFixed(3);
+          const relationStr = padToWidth(result.meta.relation, 20);
+          const visualNoteStr = padToWidth(result.meta.visualNote.substring(0, 45), 45);
+          
+          responseBody = `\n┌─────────────────────────────────────────────────────────────┐\n│ ${emoji} Tension Mapping Result                              │\n├─────────────────────────────────────────────────────────────┤\n│ Parameters:                                                 │\n│   Conflict:  ${padToWidth(conflictStr, 7)}                                    │\n│   Entropy:   ${padToWidth(entropyStr, 7)}                                    │\n│   Tension:   ${padToWidth(tensionStr, 7)}                                    │\n├─────────────────────────────────────────────────────────────┤\n│ Visual Properties:                                           │\n│   Color:     ${result.color.HEX} (${result.color.hsl})                    │\n│   Opacity:   ${opacityPercent}% (${result.opacity.toFixed(3)})                              │\n│   Width:     ${result.width}px                                              │\n├─────────────────────────────────────────────────────────────┤\n│ Metadata:                                                   │\n│   Relation:  ${relationStr}                            │\n│   Note:      ${visualNoteStr}         │\n└─────────────────────────────────────────────────────────────┘\n`;
           contentType = 'text/plain';
         } else {
           // ✅ Use Response.json() instead of JSON.stringify() (2x faster)
@@ -2688,7 +2807,7 @@ const devServer = Bun.serve({
         }
         
         // ✅ Pattern: Run inference with model caching + timing
-        let curves: any;
+        let curves: MaparseResult;
         let inferenceTime = 0;
         const inferenceStart = performance.now();
         
@@ -2784,7 +2903,7 @@ const devServer = Bun.serve({
         const workerApiStatus = await checkWorkerApiStatus();
         
         // Server Metrics
-        // See: https://bun.com/docs/runtime/http/server#server-metrics
+        // [#REF] https://bun.com/docs/runtime/http/server#server-metrics
         // - server.pendingRequests - Number of in-flight HTTP requests
         // - server.pendingWebSockets - Number of active WebSocket connections
         const status = {
@@ -2901,7 +3020,7 @@ const devServer = Bun.serve({
     // - Exact routes (like /api/dev/endpoints) take precedence over parameter routes
     // - This parameter route only handles unknown endpoints
     // - Example: /api/dev/endpoints → exact route, /api/dev/unknown → parameter route
-    // - Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+    // - [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
     // 
     // BunRequest<T> extends Request interface:
     //   // Simplified for brevity
@@ -2929,7 +3048,7 @@ const devServer = Bun.serve({
     //   return Response.json({ service, endpoint, id });
     // }) satisfies RouteHandler<'/api/:service/:endpoint/:id'>
     //
-    // Reference: https://bun.com/docs/runtime/http/routing#type-safe-route-parameters
+    // [#REF] https://bun.com/docs/runtime/http/routing#type-safe-route-parameters
     // 
     // NOTE: Percent-encoded route parameter values are automatically decoded.
     // Unicode characters are supported. Invalid unicode is replaced with the unicode
@@ -3020,7 +3139,7 @@ const devServer = Bun.serve({
     // ============================================================================
     // Wildcard routes (/api/*) match any path starting with the prefix
     // Precedence: Exact > Parameter > Wildcard > Catch-all
-    // Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+    // [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
     // 
     // Example from Bun docs:
     //   "/api/*": () => new Response("API catch-all")
@@ -3051,7 +3170,7 @@ const devServer = Bun.serve({
     // ============================================================================
     // Catch-all route (/*) matches any path that doesn't match above routes
     // Precedence: Exact > Parameter > Wildcard > Catch-all
-    // Reference: https://bun.com/docs/runtime/http/routing#route-precedence
+    // [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
     // 
     // Example from Bun docs:
     //   "/*": () => new Response("Global catch-all")
@@ -3145,7 +3264,7 @@ const devServer = Bun.serve({
   // Note: With catch-all route (/*) above, most unmatched requests are handled by routes.
   // This handler is primarily for OPTIONS preflight requests and per-request controls.
   // 
-  // Reference: https://bun.com/docs/runtime/http/routing#fetch-request-handler
+  // [#REF] https://bun.com/docs/runtime/http/routing#fetch-request-handler
   async fetch(req, server) {
     // ✅ Fixed: Handle OPTIONS preflight requests with CORS headers
     if (req.method === 'OPTIONS') {
@@ -3156,7 +3275,7 @@ const devServer = Bun.serve({
     }
     
     // Per-Request Controls
-    // Reference: https://bun.com/docs/runtime/http/server#per-request-controls
+    // [#REF] https://bun.com/docs/runtime/http/server#per-request-controls
     // - server.timeout(request, seconds) - Set custom idle timeout for a request (0 to disable)
     //   See: https://bun.com/docs/runtime/http/server#server-timeout-request-seconds
     // - server.requestIP(request) - Get client IP address and port
@@ -3179,7 +3298,7 @@ const devServer = Bun.serve({
   },
   // Error handler - catches unhandled errors in fetch handler
   // ✅ Fixed: CORS headers applied to error responses
-  // See: https://bun.com/docs/runtime/http/server#practical-example-rest-api
+  // [#REF] https://bun.com/docs/runtime/http/server#practical-example-rest-api
   error(error) {
     console.error('Server error:', error);
     const errorResp = errorResponse(
@@ -3194,19 +3313,35 @@ const devServer = Bun.serve({
 initializeMetricsTracking(devServer);
 
 /**
+ * SharedMap interface for zero-copy worker state
+ * SharedMap provides atomic reads/writes without serialization cost
+ * 
+ * [#REF] https://bun.com/docs/runtime/utils#sharedmap
+ */
+interface SharedMapLike {
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+  has(key: string): boolean;
+  delete(key: string): boolean;
+  clear(): void;
+  size: number;
+}
+
+/**
  * Worker Registry with SharedMap optimization
  * ✅ Pattern: Use SharedMap for zero-copy worker state
  * 
  * SharedMap provides atomic reads/writes without serialization cost.
  * Falls back to regular Map if SharedMap is not available.
  */
-let workerRegistryMap: Map<string, any> | any = null;
+let workerRegistryMap: Map<string, Record<string, WorkerInfo>> | SharedMapLike | null = null;
 
 try {
   // Try to use Bun.SharedMap for zero-copy worker state
-  // @ts-ignore - SharedMap may not be in type definitions yet
-  if (typeof Bun !== 'undefined' && (Bun as any).SharedMap) {
-    workerRegistryMap = new (Bun as any).SharedMap('worker-registry');
+  // SharedMap may not be in type definitions yet, so we use a type assertion
+  if (typeof Bun !== 'undefined' && 'SharedMap' in Bun && typeof (Bun as { SharedMap?: new (name: string) => SharedMapLike }).SharedMap === 'function') {
+    const SharedMapConstructor = (Bun as { SharedMap: new (name: string) => SharedMapLike }).SharedMap;
+    workerRegistryMap = new SharedMapConstructor('worker-registry');
     console.log('[Optimization] ✅ Using SharedMap for worker registry (zero-copy)');
   } else {
     // Fallback to regular Map
@@ -3242,13 +3377,13 @@ console.log(`   Hostname: ${HOSTNAME} (from ${process.env.HOSTNAME ? 'HOSTNAME' 
 console.log(`   Idle Timeout: ${IDLE_TIMEOUT_SECONDS}s (from ${process.env.IDLE_TIMEOUT ? 'IDLE_TIMEOUT' : 'default'})`);
 
 // Server Lifecycle Methods
-// See: https://bun.com/docs/runtime/http/server#server-lifecycle-methods
+// [#REF] https://bun.com/docs/runtime/http/server#server-lifecycle-methods
 // - server.stop(closeActiveConnections?) - Stop accepting new connections
 //   - closeActiveConnections: if true, immediately terminates all connections
 // - server.ref() - Keep process alive while server is running
-//   See: https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
+//   [#REF] https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
 // - server.unref() - Allow process to exit if server is only thing running
-//   See: https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
+//   [#REF] https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
 // - server.reload(options) - Update handlers without restarting (Hot Route Reloading)
 //   - Only fetch and error handlers can be updated
 //   See: https://bun.com/docs/runtime/http/server#server-reload
@@ -3269,7 +3404,7 @@ process.on('SIGTERM', async () => {
 });
 
 // Keep process alive while server is running
-// See: https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
+// [#REF] https://bun.com/docs/runtime/http/server#server-ref-and-server-unref
 // server.ref() - Prevents the process from exiting while the server is running
 // server.unref() - Allows the process to exit if the server is the only thing keeping it alive
 // Use unref() if you want the server to exit when there are no other active handles
