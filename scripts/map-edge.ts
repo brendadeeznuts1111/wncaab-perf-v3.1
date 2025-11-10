@@ -573,7 +573,7 @@ WEB ACCESS
   API:       http://localhost:3002/api/tension/map?conflict=1.0&entropy=0.0&tension=0.0
   Help API:  http://localhost:3002/api/tension/help
 
-For more information, visit: https://github.com/wncaab/perf-v3.1
+For more information, visit: https://github.com/brendadeeznuts1111/wncaab-perf-v3.1
 `;
   console.log(helpText);
 }

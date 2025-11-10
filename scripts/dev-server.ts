@@ -464,17 +464,54 @@ import { validateThreshold } from '../macros/validate-threshold.ts';
 import type { BunRequest } from 'bun';
 import { generateStaticRoutes } from './static-routes.ts';
 
+// Import shared utilities from lib modules
+import {
+  DEFAULT_PORT,
+  WORKER_API_PORT,
+  SPLINE_API_PORT,
+  DEFAULT_IDLE_TIMEOUT,
+  WORKER_API_TIMEOUT,
+  WORKER_API_CHECK_TIMEOUT,
+  REPO_URL,
+  DEFAULT_PACKAGE_INFO,
+  SERVER_NAME,
+  type PackageInfo,
+} from '../lib/constants.ts';
+
+import {
+  apiHeaders,
+  corsHeaders,
+  appendCorsHeaders,
+  jsonResponse,
+  errorResponse,
+  jsonResponseWithMetadata,
+  generateETag,
+  checkETag,
+  CORS_HEADERS,
+  type ApiHeadersOptions,
+} from '../lib/headers.ts';
+
+import { SimpleCache } from '../lib/cache.ts';
+
+import {
+  initializeMetricsTracking,
+  trackRequestStart,
+  trackRequestEnd,
+  trackWebSocketOpen,
+  trackWebSocketClose,
+  getMetricsState,
+} from '../lib/metrics.ts';
+
+import {
+  parseNumberParam,
+  parseCsvNumbers,
+  validationErrorResponse,
+  escapeHtml,
+} from '../lib/validation.ts';
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
-
-interface PackageInfo {
-  version?: string;
-  name?: string;
-  description?: string;
-  author?: string;
-  license?: string;
-}
 
 interface ConfigFile {
   [key: string]: unknown;
@@ -553,22 +590,7 @@ type RouteHandler<T extends string> = (req: BunRequest<T>) => Response | Promise
 // ============================================================================
 // Constants
 // ============================================================================
-
-const DEFAULT_PORT = 3002;
-const WORKER_API_PORT = 3000;
-const SPLINE_API_PORT = 3001;
-const DEFAULT_IDLE_TIMEOUT = 120; // seconds
-const WORKER_API_TIMEOUT = 500; // milliseconds
-const WORKER_API_CHECK_TIMEOUT = 1000; // milliseconds
-const REPO_URL = 'https://github.com/wncaab/perf-v3.1';
-
-const DEFAULT_PACKAGE_INFO: PackageInfo = {
-  version: '3.1.0',
-  name: 'wncaab-perf-v3.1',
-  description: 'WNCAAB Performance Metrics & Visualization',
-  author: 'WNCAAB Syndicate',
-  license: 'MIT',
-};
+// All constants are now imported from lib/constants.ts
 
 // ============================================================================
 // HTML Import (ServeRoute)
@@ -689,214 +711,13 @@ async function checkWorkerApiStatus(): Promise<'running' | 'not running'> {
   }
 }
 
-/**
- * Performance-Optimized Caching System
- * In-memory cache with TTL support for Bun
- */
-interface CacheEntry<T> {
-  data: T;
-  expires: number;
-}
-
-class SimpleCache<T> {
-  private cache = new Map<string, CacheEntry<T>>();
-  
-  set(key: string, value: T, ttlSeconds: number = 60): void {
-    this.cache.set(key, {
-      data: value,
-      expires: Date.now() + (ttlSeconds * 1000),
-    });
-  }
-  
-  get(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    
-    if (Date.now() > entry.expires) {
-      this.cache.delete(key);
-      return null;
-    }
-    
-    return entry.data;
-  }
-  
-  clear(): void {
-    this.cache.clear();
-  }
-  
-  size(): number {
-    return this.cache.size;
-  }
-}
-
 // Global caches for different endpoint types
+// SimpleCache is now imported from lib/cache.ts
 const gaugeCache = new SimpleCache<unknown>();
 const aiCache = new SimpleCache<unknown>();
 const tensionCache = new SimpleCache<string>(); // Cache ETag hashes
 
-/**
- * Real-time Metrics Collection
- * ✅ Pattern: Event-based metrics tracking (fixes "pending" counters)
- * 
- * Uses Bun's server event listeners for automatic metrics tracking:
- * - 'request' event → increments pendingRequests
- * - 'response' event → decrements pendingRequests
- * - 'websocketOpen' event → increments pendingWebSockets
- * - 'websocketClose' event → decrements pendingWebSockets
- * 
- * Falls back to manual tracking if event listeners are not available.
- */
-interface MetricsState {
-  pendingRequests: number;
-  pendingWebSockets: number;
-  connections: Set<any>; // WebSocket connections
-  totalRequests: number;
-  totalResponses: number;
-  totalWebSocketOpens: number;
-  totalWebSocketCloses: number;
-  timestamp: number; // High-precision timestamp (nanoseconds)
-}
-
-const metricsState: MetricsState = {
-  pendingRequests: 0,
-  pendingWebSockets: 0,
-  connections: new Set(),
-  totalRequests: 0,
-  totalResponses: 0,
-  totalWebSocketOpens: 0,
-  totalWebSocketCloses: 0,
-  timestamp: Bun.nanoseconds(),
-};
-
-/**
- * Initialize event-based metrics tracking
- * ✅ Pattern: Subscribe to server events for real-time metrics
- * 
- * Bun emits these events (undocumented but stable):
- * - 'request' - Fired when a request is received
- * - 'response' - Fired when a response is sent
- * - 'websocketOpen' - Fired when a WebSocket connection is opened
- * - 'websocketClose' - Fired when a WebSocket connection is closed
- */
-function initializeMetricsTracking(server: ReturnType<typeof Bun.serve>) {
-  try {
-    // ✅ Fixed: Subscribe to Bun's server events for automatic metrics tracking
-    // Note: These events are undocumented but stable in Bun
-    // Cast to any to access addEventListener (not in TypeScript definitions)
-    const serverWithEvents = server as any;
-    
-    // Request event - increment pending requests
-    if (typeof serverWithEvents.addEventListener === 'function') {
-      serverWithEvents.addEventListener('request', () => {
-        metricsState.pendingRequests++;
-        metricsState.totalRequests++;
-      });
-      
-      // Response event - decrement pending requests
-      serverWithEvents.addEventListener('response', () => {
-        metricsState.pendingRequests = Math.max(0, metricsState.pendingRequests - 1);
-        metricsState.totalResponses++;
-      });
-      
-      // WebSocket open event - increment pending WebSockets
-      serverWithEvents.addEventListener('websocketOpen', (ws: any) => {
-        metricsState.pendingWebSockets++;
-        metricsState.totalWebSocketOpens++;
-        metricsState.connections.add(ws);
-      });
-      
-      // WebSocket close event - decrement pending WebSockets
-      serverWithEvents.addEventListener('websocketClose', (ws: any) => {
-        metricsState.pendingWebSockets = Math.max(0, metricsState.pendingWebSockets - 1);
-        metricsState.totalWebSocketCloses++;
-        metricsState.connections.delete(ws);
-      });
-      
-      console.log('[Metrics] ✅ Initialized server event listeners for automatic metrics tracking');
-    } else {
-      // Fallback: Manual tracking if event listeners not available
-      console.warn('[Metrics] ⚠️  Server event listeners not available, using manual tracking');
-      
-      // Update timestamp periodically
-      setInterval(() => {
-        metricsState.timestamp = Bun.nanoseconds();
-      }, 1000); // Update every second
-    }
-  } catch (error) {
-    // Fallback: Manual tracking if event listeners fail
-    console.warn(`[Metrics] ⚠️  Failed to initialize event listeners: ${error instanceof Error ? error.message : String(error)}`);
-    console.warn('[Metrics] ⚠️  Falling back to manual tracking');
-    
-    // Update timestamp periodically
-    setInterval(() => {
-      metricsState.timestamp = Bun.nanoseconds();
-    }, 1000); // Update every second
-  }
-  
-  // Always update timestamp periodically (even with event listeners)
-  setInterval(() => {
-    metricsState.timestamp = Bun.nanoseconds();
-  }, 1000); // Update every second
-}
-
-/**
- * Track request start
- * Call this at the beginning of request handlers
- */
-function trackRequestStart() {
-  metricsState.pendingRequests++;
-  metricsState.totalRequests++;
-}
-
-/**
- * Track request end
- * Call this at the end of request handlers (in finally blocks)
- */
-function trackRequestEnd() {
-  metricsState.pendingRequests = Math.max(0, metricsState.pendingRequests - 1);
-  metricsState.totalResponses++;
-}
-
-/**
- * Track WebSocket open
- * Call this when a WebSocket connection is established
- */
-function trackWebSocketOpen(ws: any) {
-  metricsState.pendingWebSockets++;
-  metricsState.totalWebSocketOpens++;
-  metricsState.connections.add(ws);
-}
-
-/**
- * Track WebSocket close
- * Call this when a WebSocket connection is closed
- */
-function trackWebSocketClose(ws: any) {
-  metricsState.pendingWebSockets = Math.max(0, metricsState.pendingWebSockets - 1);
-  metricsState.totalWebSocketCloses++;
-  metricsState.connections.delete(ws);
-}
-
-/**
- * Get current metrics state
- * Returns real-time metrics with high-precision timestamp
- */
-function getMetricsState(server: ReturnType<typeof Bun.serve>) {
-  // Use manual tracking as primary source, server properties as backup
-  return {
-    pendingRequests: metricsState.pendingRequests || server.pendingRequests || 0,
-    pendingWebSockets: metricsState.pendingWebSockets || server.pendingWebSockets || 0,
-    connections: metricsState.connections.size,
-    totals: {
-      requests: metricsState.totalRequests,
-      responses: metricsState.totalResponses,
-      websocketOpens: metricsState.totalWebSocketOpens,
-      websocketCloses: metricsState.totalWebSocketCloses,
-    },
-    timestamp: metricsState.timestamp,
-    timestampNs: Bun.nanoseconds(), // Always use latest high-precision timestamp
-  };
-}
+// Metrics tracking functions are now imported from lib/metrics.ts
 
 /**
  * ONNX Model Cache for AI endpoints
@@ -2771,7 +2592,7 @@ const devServer = Bun.serve({
           help: `http://localhost:${server.port}/api/tension/help`,
         },
         references: {
-          github: 'https://github.com/wncaab/perf-v3.1',
+          github: REPO_URL,
           macro: 'macros/tension-map.ts',
           cli: 'scripts/map-edge.ts',
         },
