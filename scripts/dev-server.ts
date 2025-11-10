@@ -9,6 +9,30 @@
  * - Better error messages with field-level details
  * - Consistent API response format
  * 
+ * @BUN Bun.serve() - All routes use Bun's native routing system
+ * @ROUTE All routes defined in Bun.serve() routes property
+ * 
+ * Vector Grepable Patterns (rg):
+ *   @TYPE        - Type definitions section
+ *   @CONSTANTS   - Constants section
+ *   @CONFIG      - Config loading section
+ *   @HTML_IMPORT - HTML import section
+ *   @UTILS       - Utility functions section
+ *   @ROUTE       - Route definitions (all use Bun.serve() routes property)
+ *   @BUN         - Bun native API usage
+ * 
+ * Grep Examples:
+ *   rg "@ROUTE" scripts/dev-server.ts              # All route sections
+ *   rg "@BUN" scripts/dev-server.ts                # All Bun API usage
+ *   rg "@ROUTE.*Static" scripts/dev-server.ts      # Static routes
+ *   rg "@ROUTE.*Parameter" scripts/dev-server.ts   # Parameter routes
+ *   rg "@ROUTE.*Wildcard" scripts/dev-server.ts    # Wildcard routes
+ *   rg "routes:\s*\{" scripts/dev-server.ts        # Routes property definition
+ *   rg "Bun\.serve\(" scripts/dev-server.ts        # Bun.serve() calls
+ *   rg "Bun\.file\(" scripts/dev-server.ts         # Bun.file() usage
+ *   rg "Bun\.escapeHTML" scripts/dev-server.ts     # Bun.escapeHTML() usage
+ *   rg "Bun\.stringWidth" scripts/dev-server.ts   # Bun.stringWidth() usage
+ * 
  * Now using Bun's native routing system with full route precedence support:
  * - Routes property handles all routing (static, file, async handlers, parameter routes)
  * - Fetch handler only handles unmatched requests (404)
@@ -513,7 +537,8 @@ import {
 } from '../lib/validation.ts';
 
 // ============================================================================
-// Type Definitions
+// @TYPE Type Definitions
+// @GREP: rg "@TYPE" scripts/dev-server.ts
 // ============================================================================
 
 interface ConfigFile {
@@ -591,12 +616,15 @@ interface HealthCheck {
 type RouteHandler<T extends string> = (req: BunRequest<T>) => Response | Promise<Response>;
 
 // ============================================================================
-// Constants
+// @CONSTANTS Constants
+// @GREP: rg "@CONSTANTS" scripts/dev-server.ts
 // ============================================================================
 // All constants are now imported from lib/constants.ts
 
 // ============================================================================
-// HTML Import (ServeRoute)
+// @HTML_IMPORT HTML Import (ServeRoute)
+// @BUN Bun.serve() HTML imports - native asset bundling with HMR
+// @GREP: rg "@HTML_IMPORT" scripts/dev-server.ts
 // ============================================================================
 
 // HTML file import using Bun's native HTML loader
@@ -610,7 +638,8 @@ type RouteHandler<T extends string> = (req: BunRequest<T>) => Response | Promise
 import tensionPage from '../templates/tension.html';
 
 // ============================================================================
-// Config Loading (Zero Runtime Cost - Parsed at Import Time)
+// @CONFIG Config Loading (Zero Runtime Cost - Parsed at Import Time)
+// @GREP: rg "@CONFIG" scripts/dev-server.ts
 // ============================================================================
 
 // Direct imports using Bun's native loaders
@@ -689,7 +718,9 @@ let workerApiAvailable = false;
 })();
 
 // ============================================================================
-// String Width Utilities (Unicode/Emoji-aware)
+// @UTILS String Width Utilities (Unicode/Emoji-aware)
+// @BUN Bun.stringWidth() - Unicode/emoji-aware string width calculation
+// @GREP: rg "@UTILS.*String.*Width" scripts/dev-server.ts
 // ============================================================================
 
 /**
@@ -1852,6 +1883,10 @@ const devServer = Bun.serve({
   //   "/*": () => new Response("Global catch-all"),            // Catch-all route
   // 
   // [#REF] https://bun.com/docs/runtime/http/routing#route-precedence
+  // @ROUTE Bun.serve() routes property - all routes defined here
+  // @BUN Bun.serve() native routing - zero-dependency, type-safe, high-performance
+  // @GREP: rg "@ROUTE.*Bun\.serve" scripts/dev-server.ts
+  // @GREP: rg "routes:\s*\{" scripts/dev-server.ts
   routes: {
     // 1. Exact static routes (highest priority)
     // Static responses - Zero-allocation dispatch
@@ -1876,6 +1911,9 @@ const devServer = Bun.serve({
     //   Static JSON: Response.json({ version: "1.0.0" })
     // 
     // [#REF] https://bun.com/docs/runtime/http/routing#static-responses
+    // @ROUTE Static Routes - Exact match, zero-allocation dispatch
+    // @BUN Bun.serve() static responses - Response objects without handlers
+    // @GREP: rg "@ROUTE.*Static" scripts/dev-server.ts
     '/favicon.ico': new Response(null, { status: 204 }),
     '/health': new Response('OK'),
     '/ready': new Response('Ready', {
@@ -1915,6 +1953,9 @@ const devServer = Bun.serve({
     // - Sets correct Content-Type headers
     // - Handles asset fingerprinting and cache busting
     // [#REF] https://bun.com/docs/runtime/http/server#html-imports
+    // @ROUTE HTML Import Route - Native Bun HTML loader
+    // @BUN Bun.serve() HTML imports - automatic asset bundling
+    // @GREP: rg "@ROUTE.*HTML" scripts/dev-server.ts
     '/tension': tensionPage,
     
     // 3. File Routes - Generated from static-routes.ts manifest
@@ -1951,6 +1992,9 @@ const devServer = Bun.serve({
     //   - Best for: Large files, dynamic content, user uploads, files that change frequently
     // 
     // [#REF] https://bun.com/docs/runtime/http/routing#file-responses-vs-static-responses
+    // @ROUTE File Routes - Bun.file() static file serving
+    // @BUN Bun.file() - optimized file I/O with Range support
+    // @GREP: rg "@ROUTE.*File" scripts/dev-server.ts
     ...Object.fromEntries(
       staticRoutes.map(r => [r.path, r.handler])
     ),
@@ -1989,6 +2033,10 @@ const devServer = Bun.serve({
     //       }, 100);
     //     });
     //   }
+    // 
+    // @ROUTE Dynamic API Routes - Async handlers with BunRequest<T>
+    // @BUN Bun.serve() async routes - Promise<Response> support
+    // @GREP: rg "@ROUTE.*Dynamic.*API" scripts/dev-server.ts
     // 
     // Sync handler pattern:
     //   "/": () => new Response("Home")
@@ -2998,7 +3046,9 @@ const devServer = Bun.serve({
     },
     
     // ============================================================================
-    // Parameter Routes - Type-Safe Route Parameters (REQUIRED Pattern)
+    // @ROUTE Parameter Routes - Type-Safe Route Parameters (REQUIRED Pattern)
+    // @BUN Bun.serve() routes property - type-safe routing with BunRequest<T>
+    // @GREP: rg "@ROUTE.*Parameter" scripts/dev-server.ts
     // ============================================================================
     // Bun provides type-safe route parameters via BunRequest<T>
     // 
@@ -3135,7 +3185,9 @@ const devServer = Bun.serve({
     }) satisfies RouteHandler<'/api/dev/:endpoint'>,
     
     // ============================================================================
-    // Wildcard Routes - Matches paths under prefix
+    // @ROUTE Wildcard Routes - Matches paths under prefix
+    // @BUN Bun.serve() routes property - wildcard pattern matching
+    // @GREP: rg "@ROUTE.*Wildcard" scripts/dev-server.ts
     // ============================================================================
     // Wildcard routes (/api/*) match any path starting with the prefix
     // Precedence: Exact > Parameter > Wildcard > Catch-all
@@ -3166,7 +3218,9 @@ const devServer = Bun.serve({
     },
     
     // ============================================================================
-    // Global Catch-All Route - Matches all unmatched routes
+    // @ROUTE Global Catch-All Route - Matches all unmatched routes
+    // @BUN Bun.serve() routes property - catch-all pattern matching
+    // @GREP: rg "@ROUTE.*Catch-All" scripts/dev-server.ts
     // ============================================================================
     // Catch-all route (/*) matches any path that doesn't match above routes
     // Precedence: Exact > Parameter > Wildcard > Catch-all
@@ -3265,6 +3319,9 @@ const devServer = Bun.serve({
   // This handler is primarily for OPTIONS preflight requests and per-request controls.
   // 
   // [#REF] https://bun.com/docs/runtime/http/routing#fetch-request-handler
+  // @ROUTE Fetch Handler - Unmatched requests fallback
+  // @BUN Bun.serve() fetch handler - handles unmatched requests
+  // @GREP: rg "@ROUTE.*Fetch.*Handler" scripts/dev-server.ts
   async fetch(req, server) {
     // ✅ Fixed: Handle OPTIONS preflight requests with CORS headers
     if (req.method === 'OPTIONS') {
