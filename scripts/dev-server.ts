@@ -1508,11 +1508,24 @@ function generateDashboard() {
                 <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#fd7e14' : '#28a745'};">\${colorStats.unused}</div>
               </div>
             </div>
-            <h3 style="color:#333;margin-bottom:10px;">🚨 Unused Colors</h3>
+            <h3 style="color:#333;margin-bottom:10px;">📋 Reserved Colors</h3>
             \${unusedList}
-            <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
-              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
-              <span style="color:#666;font-size:0.9em;">Run <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run audit:colors</code> for detailed analysis</span>
+            <div style="margin-top:20px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
+              <strong style="color:#fd7e14;display:block;margin-bottom:5px;">✅ Decision: KEEP all colors</strong>
+              <span style="color:#666;font-size:0.9em;">These colors are documented as reserved for future features. See <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#fd7e14;">macros/color-macro.ts</code> for rationale.</span>
+            </div>
+            <div style="margin-top:15px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Rationale</strong>
+              <ul style="color:#666;font-size:0.9em;margin:0;padding-left:20px;">
+                <li>650 bytes is negligible vs design system benefits</li>
+                <li>Prevents color drift in future features</li>
+                <li>No rebuild needed when adding dashboards/alerts</li>
+                <li>Next review: 2025-04-15</li>
+              </ul>
+            </div>
+            <div style="margin-top:15px;padding:15px;background:#e7f5e7;border-radius:8px;border-left:4px solid #28a745;">
+              <strong style="color:#28a745;display:block;margin-bottom:5px;">📊 Detailed Analysis</strong>
+              <span style="color:#666;font-size:0.9em;">Run <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run audit:colors</code> for full usage report</span>
             </div>
           </div>
         </div>
