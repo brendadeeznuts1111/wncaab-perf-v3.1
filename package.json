@@ -69,7 +69,9 @@
     "build:tension": "bun run build:tension-states && bun run build:tension-page",
     "build:css-variables": "bun run build/generate-css-variables.ts",
     "build:validate-links": "bun run build/validate-links.ts",
-    "prebuild": "bun run build:validate-links.ts && bun run build:css-variables",
+    "dev:colors": "bun run build:css-variables && open public/color-palette.html",
+    "validate:colors": "bun -e \"import './macros/color-macro.ts'; console.log('✅ All colors validated')\"",
+    "prebuild": "bun run validate:colors && bun run build:validate-links.ts && bun run build:css-variables",
     "version": "bun run scripts/version-tracker.js",
     "version:check": "bun run scripts/version-tracker.js"
   },

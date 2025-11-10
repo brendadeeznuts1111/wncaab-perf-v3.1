@@ -115,6 +115,27 @@ export const WNCAAB_COLORS = {
   liveIndicator: validateHex("#ef4444"),  // Red for live indicator dot
 } as const;
 
+/**
+ * Type-safe color name
+ * Prevents typos when accessing colors
+ * 
+ * @example
+ * getColor('primary') // ✅ Valid
+ * getColor('primry')  // ❌ TypeScript error
+ */
+export type ColorName = keyof typeof WNCAAB_COLORS;
+
+/**
+ * Type-safe color getter
+ * Returns color value with full type safety
+ * 
+ * @param name - Color name (type-safe, prevents typos)
+ * @returns Hex color string
+ */
+export function getColor(name: ColorName): string {
+  return WNCAAB_COLORS[name];
+}
+
 // Validate contrast ratios at build time
 // Primary header: dark text on light green background ✅
 validateContrast(WNCAAB_COLORS.contrastDark, WNCAAB_COLORS.primary);
@@ -153,11 +174,13 @@ export function hexToRgba(hex: string, opacity: number): string {
 /**
  * Generate CSS variables for runtime theme switching
  * Enables dark mode or user themes without rebuilding macros
+ * Includes dark mode support via prefers-color-scheme media query
  * 
- * @returns CSS string with :root variables
+ * @returns CSS string with :root variables and dark mode
  */
 export function generateCssVariables(): string {
   return `
+    /* Light mode (default) */
     :root {
       /* WNCAAB Primary Colors */
       --wn-primary: ${WNCAAB_COLORS.primary};
@@ -189,6 +212,23 @@ export function generateCssVariables(): string {
       --wn-header-opacity: 1;
       --wn-footer-opacity: 1;
       --wn-border-opacity: 0.25;
+    }
+    
+    /* Dark mode (respects system preference) */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* Dark mode uses darker primary for better contrast */
+        --wn-primary: ${WNCAAB_COLORS.primaryDark};
+        --wn-primary-dark: ${WNCAAB_COLORS.primary};
+        
+        /* Invert background/text for dark mode */
+        --wn-background: ${WNCAAB_COLORS.contrastDark};
+        --wn-background-end: #1a1a2e;
+        --wn-card-bg: #1e293b;
+        --wn-text-primary: ${WNCAAB_COLORS.contrastLight};
+        --wn-text-secondary: #cbd5e1;
+        --wn-border: #334155;
+      }
     }
   `.trim();
 }

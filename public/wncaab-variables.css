@@ -1,4 +1,5 @@
-:root {
+/* Light mode (default) */
+    :root {
       /* WNCAAB Primary Colors */
       --wn-primary: #80FF80;
       --wn-primary-dark: #4ade80;
@@ -29,4 +30,21 @@
       --wn-header-opacity: 1;
       --wn-footer-opacity: 1;
       --wn-border-opacity: 0.25;
+    }
+    
+    /* Dark mode (respects system preference) */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        /* Dark mode uses darker primary for better contrast */
+        --wn-primary: #4ade80;
+        --wn-primary-dark: #80FF80;
+        
+        /* Invert background/text for dark mode */
+        --wn-background: #0f172a;
+        --wn-background-end: #1a1a2e;
+        --wn-card-bg: #1e293b;
+        --wn-text-primary: #f8fafc;
+        --wn-text-secondary: #cbd5e1;
+        --wn-border: #334155;
+      }
     }

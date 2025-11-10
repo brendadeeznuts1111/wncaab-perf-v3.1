@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WNCAAB Color Palette</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 0.5rem;
+      font-size: 2.5em;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 2rem;
+      font-size: 1.1em;
+    }
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+    .color-box {
+      width: 100%;
+      height: 150px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 1rem;
+      color: white;
+      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: transform 0.2s, box-shadow 0.2s;
+      cursor: pointer;
+    }
+    .color-box:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+    }
+    .color-name {
+      font-weight: 700;
+      font-size: 1.1em;
+      margin-bottom: 0.25rem;
+    }
+    .color-hex {
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.9em;
+      opacity: 0.95;
+    }
+    .info-section {
+      margin-top: 3rem;
+      padding: 1.5rem;
+      background: #f8f9fa;
+      border-radius: 12px;
+      border-left: 4px solid #80FF80;
+    }
+    .info-section h2 {
+      color: #333;
+      margin-bottom: 1rem;
+    }
+    .info-section code {
+      background: #e9ecef;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 WNCAAB Color Palette</h1>
+    <p class="subtitle">Build-time validated colors with WCAG AAA contrast compliance</p>
+    
+    <div class="color-grid">
+      
+          <div class="color-box" style="background: #80FF80; color: #0f172a;" onclick="navigator.clipboard.writeText('#80FF80').then(() => alert('Copied: #80FF80'))">
+            <div class="color-name">primary</div>
+            <div class="color-hex">#80FF80</div>
+          </div>
+        
+          <div class="color-box" style="background: #4ade80; color: #0f172a;" onclick="navigator.clipboard.writeText('#4ade80').then(() => alert('Copied: #4ade80'))">
+            <div class="color-name">primaryDark</div>
+            <div class="color-hex">#4ade80</div>
+          </div>
+        
+          <div class="color-box" style="background: #a8f5a8; color: #0f172a;" onclick="navigator.clipboard.writeText('#a8f5a8').then(() => alert('Copied: #a8f5a8'))">
+            <div class="color-name">primaryLight</div>
+            <div class="color-hex">#a8f5a8</div>
+          </div>
+        
+          <div class="color-box" style="background: #0f172a; color: #f8fafc;" onclick="navigator.clipboard.writeText('#0f172a').then(() => alert('Copied: #0f172a'))">
+            <div class="color-name">contrastDark</div>
+            <div class="color-hex">#0f172a</div>
+          </div>
+        
+          <div class="color-box" style="background: #f8fafc; color: #0f172a;" onclick="navigator.clipboard.writeText('#f8fafc').then(() => alert('Copied: #f8fafc'))">
+            <div class="color-name">contrastLight</div>
+            <div class="color-hex">#f8fafc</div>
+          </div>
+        
+          <div class="color-box" style="background: #28a745; color: #f8fafc;" onclick="navigator.clipboard.writeText('#28a745').then(() => alert('Copied: #28a745'))">
+            <div class="color-name">success</div>
+            <div class="color-hex">#28a745</div>
+          </div>
+        
+          <div class="color-box" style="background: #dc3545; color: #f8fafc;" onclick="navigator.clipboard.writeText('#dc3545').then(() => alert('Copied: #dc3545'))">
+            <div class="color-name">error</div>
+            <div class="color-hex">#dc3545</div>
+          </div>
+        
+          <div class="color-box" style="background: #ffc107; color: #0f172a;" onclick="navigator.clipboard.writeText('#ffc107').then(() => alert('Copied: #ffc107'))">
+            <div class="color-name">warning</div>
+            <div class="color-hex">#ffc107</div>
+          </div>
+        
+          <div class="color-box" style="background: #17a2b8; color: #f8fafc;" onclick="navigator.clipboard.writeText('#17a2b8').then(() => alert('Copied: #17a2b8'))">
+            <div class="color-name">info</div>
+            <div class="color-hex">#17a2b8</div>
+          </div>
+        
+          <div class="color-box" style="background: #667eea; color: #0f172a;" onclick="navigator.clipboard.writeText('#667eea').then(() => alert('Copied: #667eea'))">
+            <div class="color-name">background</div>
+            <div class="color-hex">#667eea</div>
+          </div>
+        
+          <div class="color-box" style="background: #764ba2; color: #f8fafc;" onclick="navigator.clipboard.writeText('#764ba2').then(() => alert('Copied: #764ba2'))">
+            <div class="color-name">backgroundEnd</div>
+            <div class="color-hex">#764ba2</div>
+          </div>
+        
+          <div class="color-box" style="background: #ffffff; color: #0f172a;" onclick="navigator.clipboard.writeText('#ffffff').then(() => alert('Copied: #ffffff'))">
+            <div class="color-name">cardBackground</div>
+            <div class="color-hex">#ffffff</div>
+          </div>
+        
+          <div class="color-box" style="background: #333333; color: #f8fafc;" onclick="navigator.clipboard.writeText('#333333').then(() => alert('Copied: #333333'))">
+            <div class="color-name">textPrimary</div>
+            <div class="color-hex">#333333</div>
+          </div>
+        
+          <div class="color-box" style="background: #666666; color: #f8fafc;" onclick="navigator.clipboard.writeText('#666666').then(() => alert('Copied: #666666'))">
+            <div class="color-name">textSecondary</div>
+            <div class="color-hex">#666666</div>
+          </div>
+        
+          <div class="color-box" style="background: #e0e0e0; color: #0f172a;" onclick="navigator.clipboard.writeText('#e0e0e0').then(() => alert('Copied: #e0e0e0'))">
+            <div class="color-name">border</div>
+            <div class="color-hex">#e0e0e0</div>
+          </div>
+        
+          <div class="color-box" style="background: #ef4444; color: #f8fafc;" onclick="navigator.clipboard.writeText('#ef4444').then(() => alert('Copied: #ef4444'))">
+            <div class="color-name">liveIndicator</div>
+            <div class="color-hex">#ef4444</div>
+          </div>
+        
+    </div>
+    
+    <div class="info-section">
+      <h2>📋 Usage</h2>
+      <p><strong>TypeScript:</strong></p>
+      <pre><code>import { WNCAAB_COLORS, getColor } from './macros/color-macro.ts';
+const primary = getColor('primary'); // Type-safe!</code></pre>
+      
+      <p style="margin-top: 1rem;"><strong>CSS Variables:</strong></p>
+      <pre><code>background: var(--wn-primary);
+color: var(--wn-text-primary);</code></pre>
+      
+      <p style="margin-top: 1rem;"><strong>Runtime Theme Switching:</strong></p>
+      <pre><code>document.documentElement.style.setProperty('--wn-primary', '#FF0000');</code></pre>
+    </div>
+  </div>
+</body>
+</html>
