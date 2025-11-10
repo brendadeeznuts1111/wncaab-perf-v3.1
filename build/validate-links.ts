@@ -31,6 +31,7 @@ const links = [
   { name: "Repo", url: DASHBOARD_META.urls.repo.url },
   { name: "Issues", url: DASHBOARD_META.urls.issues.url },
   { name: "PRs", url: DASHBOARD_META.urls.prs.url },
+  { name: "Changelog", url: DASHBOARD_META.urls.changelog.url },
 ];
 
 let validCount = 0;

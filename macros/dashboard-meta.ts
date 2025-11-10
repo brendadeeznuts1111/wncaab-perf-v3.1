@@ -41,6 +41,7 @@ const REPO_CONFIG = {
 const REPO_URL = `https://${REPO_CONFIG.platform}.com/${REPO_CONFIG.owner}/${REPO_CONFIG.name}`;
 const ISSUES_URL = `${REPO_URL}/issues`;
 const PRS_URL = `${REPO_URL}/pulls`;
+const CHANGELOG_URL = `${REPO_URL}/blob/main/CHANGELOG.md`;
 
 // Validate URLs at build time (ensures no 404s)
 async function validateUrl(url: string): Promise<boolean> {
@@ -56,12 +57,14 @@ async function validateUrl(url: string): Promise<boolean> {
 let repoValid = false;
 let issuesValid = false;
 let prsValid = false;
+let changelogValid = false;
 
 try {
-  [repoValid, issuesValid, prsValid] = await Promise.all([
+  [repoValid, issuesValid, prsValid, changelogValid] = await Promise.all([
     validateUrl(REPO_URL),
     validateUrl(ISSUES_URL),
     validateUrl(PRS_URL),
+    validateUrl(CHANGELOG_URL),
   ]);
 } catch (error) {
   console.warn("⚠️  Link validation skipped (network unavailable or timeout)");
@@ -82,6 +85,7 @@ export const DASHBOARD_META = {
     repo: { url: REPO_URL, valid: repoValid },
     issues: { url: ISSUES_URL, valid: issuesValid },
     prs: { url: PRS_URL, valid: prsValid },
+    changelog: { url: CHANGELOG_URL, valid: changelogValid },
   },
   buildTime: new Date().toISOString(),
   repo: REPO_CONFIG,

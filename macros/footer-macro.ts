@@ -65,6 +65,15 @@ export const generateFooter = () => `
        style="color: #94a3b8; text-decoration: none; padding: 0.5rem; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem;">
       🔀 Pull Requests
     </a>
+    <a href="${DASHBOARD_META.urls.changelog.url}" 
+       target="_blank" 
+       rel="noopener noreferrer"
+       class="${!DASHBOARD_META.urls.changelog.valid ? 'invalid' : ''}"
+       title="View Changelog"
+       style="color: #94a3b8; text-decoration: none; padding: 0.5rem; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem;">
+      📝 Changelog
+      ${!DASHBOARD_META.urls.changelog.valid ? '⚠️' : ''}
+    </a>
     <a href="/api/dev/status" 
        target="_blank" 
        rel="noopener noreferrer"
@@ -78,6 +87,17 @@ export const generateFooter = () => `
       color: #f8fafc !important;
       background: rgba(255,255,255,0.1);
       transform: translateY(-1px);
+    }
+    
+    .dashboard-footer a.invalid {
+      opacity: 0.5;
+      cursor: not-allowed;
+      text-decoration: line-through;
+    }
+    
+    .dashboard-footer a.invalid:hover {
+      background: transparent !important;
+      transform: none;
     }
     
     @media (max-width: 768px) {
