@@ -1,0 +1,32 @@
+:root {
+      /* WNCAAB Primary Colors */
+      --wn-primary: #80FF80;
+      --wn-primary-dark: #4ade80;
+      --wn-primary-light: #a8f5a8;
+      
+      /* Contrast Colors */
+      --wn-contrast-dark: #0f172a;
+      --wn-contrast-light: #f8fafc;
+      
+      /* Status Colors */
+      --wn-success: #28a745;
+      --wn-error: #dc3545;
+      --wn-warning: #ffc107;
+      --wn-info: #17a2b8;
+      
+      /* UI Colors */
+      --wn-background: #667eea;
+      --wn-background-end: #764ba2;
+      --wn-card-bg: #ffffff;
+      --wn-text-primary: #333333;
+      --wn-text-secondary: #666666;
+      --wn-border: #e0e0e0;
+      
+      /* Live Indicator */
+      --wn-live-indicator: #ef4444;
+      
+      /* Opacity Variables (for runtime control) */
+      --wn-header-opacity: 1;
+      --wn-footer-opacity: 1;
+      --wn-border-opacity: 0.25;
+    }

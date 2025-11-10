@@ -13,36 +13,113 @@
 // The actual Bun color macro would be used in build scripts.
 
 /**
+ * Validate hex color format at build time
+ * Prevents invalid colors from entering the codebase
+ * 
+ * @param hex - Hex color string (e.g., "#80FF80")
+ * @returns Validated hex color string
+ * @throws Error if hex format is invalid
+ */
+export function validateHex(hex: string): string {
+  if (!/^#([0-9A-F]{3}|[0-9A-F]{6})$/i.test(hex)) {
+    throw new Error(`[Color Macro] Invalid hex color: ${hex}. Expected format: #RRGGBB or #RGB`);
+  }
+  return hex;
+}
+
+/**
+ * Calculate relative luminance for WCAG contrast ratio
+ * Formula: https://www.w3.org/WAI/GL/wiki/Relative_luminance
+ */
+function getLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map(val => {
+    val = val / 255;
+    return val <= 0.03928 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Calculate WCAG contrast ratio between two colors
+ * Returns ratio from 1:1 (no contrast) to 21:1 (maximum contrast)
+ * WCAG AA requires 4.5:1 for normal text, 3:1 for large text
+ * WCAG AAA requires 7:1 for normal text, 4.5:1 for large text
+ */
+export function calculateContrastRatio(hex1: string, hex2: string): number {
+  const rgb1 = hexToRgb(hex1);
+  const rgb2 = hexToRgb(hex2);
+  
+  const lum1 = getLuminance(rgb1.r, rgb1.g, rgb1.b);
+  const lum2 = getLuminance(rgb2.r, rgb2.g, rgb2.b);
+  
+  const lighter = Math.max(lum1, lum2);
+  const darker = Math.min(lum1, lum2);
+  
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+/**
+ * Validate WCAG contrast ratio at build time
+ * Warns if colors don't meet accessibility standards
+ * 
+ * @param textHex - Text color hex
+ * @param bgHex - Background color hex
+ * @param minRatio - Minimum contrast ratio (default: 4.5 for WCAG AA)
+ * @returns Text color hex if valid
+ */
+export function validateContrast(textHex: string, bgHex: string, minRatio: number = 4.5): string {
+  const contrast = calculateContrastRatio(textHex, bgHex);
+  
+  if (contrast < minRatio) {
+    console.warn(
+      `[A11y Warning] Contrast ratio ${contrast.toFixed(2)}:1 < ${minRatio}:1 ` +
+      `for ${textHex} on ${bgHex}. WCAG AA requires ${minRatio}:1 for normal text.`
+    );
+  } else {
+    console.log(`[A11y] ✅ Contrast ratio ${contrast.toFixed(2)}:1 for ${textHex} on ${bgHex}`);
+  }
+  
+  return textHex;
+}
+
+/**
  * WNCAAB Theme Colors
  * Primary color from tension mapping: green-thin edge (#80FF80)
+ * All colors validated at build time
  */
 export const WNCAAB_COLORS = {
   // Primary colors (from tension mapping)
-  primary: "#80FF80",        // Green-thin edge (temperate relation)
-  primaryDark: "#4ade80",    // Darker green for gradients
-  primaryLight: "#a8f5a8",  // Lighter green
+  primary: validateHex("#80FF80"),        // Green-thin edge (temperate relation)
+  primaryDark: validateHex("#4ade80"),    // Darker green for gradients
+  primaryLight: validateHex("#a8f5a8"),  // Lighter green
   
   // Contrast colors (calculated from primary)
-  contrastDark: "#0f172a",   // Dark text on light background
-  contrastLight: "#f8fafc",  // Light text on dark background
+  contrastDark: validateHex("#0f172a"),   // Dark text on light background
+  contrastLight: validateHex("#f8fafc"),  // Light text on dark background
   
   // Status colors
-  success: "#28a745",        // Green for active/success states
-  error: "#dc3545",          // Red for errors/inactive states
-  warning: "#ffc107",        // Yellow for warnings
-  info: "#17a2b8",           // Blue for info
+  success: validateHex("#28a745"),        // Green for active/success states
+  error: validateHex("#dc3545"),          // Red for errors/inactive states
+  warning: validateHex("#ffc107"),        // Yellow for warnings
+  info: validateHex("#17a2b8"),           // Blue for info
   
   // UI colors
-  background: "#667eea",     // Purple gradient start
-  backgroundEnd: "#764ba2",  // Purple gradient end
-  cardBackground: "#ffffff",  // White for cards
-  textPrimary: "#333333",    // Dark gray for primary text
-  textSecondary: "#666666",  // Medium gray for secondary text
-  border: "#e0e0e0",         // Light gray for borders
+  background: validateHex("#667eea"),     // Purple gradient start
+  backgroundEnd: validateHex("#764ba2"),  // Purple gradient end
+  cardBackground: validateHex("#ffffff"),  // White for cards
+  textPrimary: validateHex("#333333"),    // Dark gray for primary text
+  textSecondary: validateHex("#666666"),  // Medium gray for secondary text
+  border: validateHex("#e0e0e0"),         // Light gray for borders
   
   // Live indicator
-  liveIndicator: "#ef4444",  // Red for live indicator dot
+  liveIndicator: validateHex("#ef4444"),  // Red for live indicator dot
 } as const;
+
+// Validate contrast ratios at build time
+// Primary header: dark text on light green background ✅
+validateContrast(WNCAAB_COLORS.contrastDark, WNCAAB_COLORS.primary);
+// Footer: light text on dark background ✅
+validateContrast(WNCAAB_COLORS.contrastLight, "#0f172a"); // Footer background
 
 /**
  * Convert hex to RGB
@@ -71,5 +148,62 @@ export function getContrastColor(hex: string): string {
 export function hexToRgba(hex: string, opacity: number): string {
   const { r, g, b } = hexToRgb(hex);
   return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+/**
+ * Generate CSS variables for runtime theme switching
+ * Enables dark mode or user themes without rebuilding macros
+ * 
+ * @returns CSS string with :root variables
+ */
+export function generateCssVariables(): string {
+  return `
+    :root {
+      /* WNCAAB Primary Colors */
+      --wn-primary: ${WNCAAB_COLORS.primary};
+      --wn-primary-dark: ${WNCAAB_COLORS.primaryDark};
+      --wn-primary-light: ${WNCAAB_COLORS.primaryLight};
+      
+      /* Contrast Colors */
+      --wn-contrast-dark: ${WNCAAB_COLORS.contrastDark};
+      --wn-contrast-light: ${WNCAAB_COLORS.contrastLight};
+      
+      /* Status Colors */
+      --wn-success: ${WNCAAB_COLORS.success};
+      --wn-error: ${WNCAAB_COLORS.error};
+      --wn-warning: ${WNCAAB_COLORS.warning};
+      --wn-info: ${WNCAAB_COLORS.info};
+      
+      /* UI Colors */
+      --wn-background: ${WNCAAB_COLORS.background};
+      --wn-background-end: ${WNCAAB_COLORS.backgroundEnd};
+      --wn-card-bg: ${WNCAAB_COLORS.cardBackground};
+      --wn-text-primary: ${WNCAAB_COLORS.textPrimary};
+      --wn-text-secondary: ${WNCAAB_COLORS.textSecondary};
+      --wn-border: ${WNCAAB_COLORS.border};
+      
+      /* Live Indicator */
+      --wn-live-indicator: ${WNCAAB_COLORS.liveIndicator};
+      
+      /* Opacity Variables (for runtime control) */
+      --wn-header-opacity: 1;
+      --wn-footer-opacity: 1;
+      --wn-border-opacity: 0.25;
+    }
+  `.trim();
+}
+
+/**
+ * Convert hex to CSS rgba with CSS variable opacity support
+ * Enables runtime opacity control without rebuilding macros
+ * 
+ * @param hex - Hex color string
+ * @param varName - CSS variable name for opacity (e.g., "--header-opacity")
+ * @param fallback - Fallback opacity if variable not set (default: 1)
+ * @returns CSS rgb() with variable opacity
+ */
+export function hexToRgbaVar(hex: string, varName: string, fallback: number = 1): string {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgb(${r} ${g} ${b} / var(${varName}, ${fallback}))`;
 }
 
