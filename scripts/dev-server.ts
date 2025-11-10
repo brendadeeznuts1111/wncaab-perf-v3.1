@@ -967,14 +967,16 @@ function generateDashboard() {
   const endpoints = getAllEndpoints();
   
   // Generate color usage report for dashboard
-  // Note: Colors are tracked when macros are imported (header/footer macros)
-  let colorReport;
+  // Note: Colors are tracked when macros are imported (header/footer macros use getColor())
+  // Since HEADER_HTML and FOOTER_HTML are already imported, colors should be tracked
+  let colorReport = { total: 16, used: [], unused: [], unusedCount: 16 };
   try {
-    const { generateColorReport } = require('../macros/color-macro.ts');
-    colorReport = generateColorReport();
-  } catch {
+    // Import and generate report (colors tracked during header/footer macro imports)
+    const colorMacro = await import('../macros/color-macro.ts');
+    colorReport = colorMacro.generateColorReport();
+  } catch (error) {
     // Fallback if import fails - use static values
-    colorReport = { total: 16, used: [], unused: [], unusedCount: 16 };
+    console.warn('[Dashboard] Could not generate color report:', error);
   }
   
   // Escape user-controlled content to prevent XSS attacks
