@@ -1,7 +1,53 @@
 {
   "name": "wncaab-perf-v3.1",
   "version": "3.1.0",
-  "description": "WNCAAB Performance Visualization v3.1 - Grep-first metrics with schema validation",
+  "description": "High-performance Bun-native dev server with type-safe APIs, comprehensive documentation, and zero-dependency architecture. Features grep-first metrics, schema validation, remote index distribution, and AI-powered immunity.",
+  "keywords": [
+    "bun",
+    "bun-runtime",
+    "typescript",
+    "performance",
+    "dev-server",
+    "api",
+    "dashboard",
+    "type-safety",
+    "zero-dependencies",
+    "high-performance",
+    "http-server",
+    "routing",
+    "metrics",
+    "telemetry",
+    "worker",
+    "sharedmap",
+    "html-escaping",
+    "string-width",
+    "unicode",
+    "emoji",
+    "validation",
+    "schema-validation",
+    "grep",
+    "indexing",
+    "ai-immunity",
+    "tension-mapping",
+    "color-system",
+    "web-socket",
+    "real-time",
+    "hmr",
+    "hot-reload",
+    "etag",
+    "caching",
+    "optimization",
+    "benchmark",
+    "native-apis",
+    "simd",
+    "zero-copy",
+    "atomic-operations"
+  ],
+  "author": {
+    "name": "WNCAAB Syndicate",
+    "url": "https://github.com/brendadeeznuts1111"
+  },
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/brendadeeznuts1111/wncaab-perf-v3.1.git"
@@ -10,6 +56,23 @@
   "bugs": {
     "url": "https://github.com/brendadeeznuts1111/wncaab-perf-v3.1/issues"
   },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/brendadeeznuts1111"
+  },
+  "main": "scripts/dev-server.ts",
+  "type": "module",
+  "files": [
+    "scripts/**/*",
+    "lib/**/*",
+    "macros/**/*",
+    "docs/**/*",
+    "templates/**/*",
+    "types/**/*",
+    "*.md",
+    "*.toml",
+    "*.yaml"
+  ],
   "scripts": {
     "rules:config": "bun run scripts/rules-config.js",
     "rules:pr": "bun run scripts/rules-pr.js",
