@@ -966,6 +966,17 @@ function getAllEndpoints(): EndpointsMap {
 function generateDashboard() {
   const endpoints = getAllEndpoints();
   
+  // Generate color usage report for dashboard
+  // Note: Colors are tracked when macros are imported (header/footer macros)
+  let colorReport;
+  try {
+    const { generateColorReport } = require('../macros/color-macro.ts');
+    colorReport = generateColorReport();
+  } catch {
+    // Fallback if import fails - use static values
+    colorReport = { total: 16, used: [], unused: [], unusedCount: 16 };
+  }
+  
   // Escape user-controlled content to prevent XSS attacks
   // Bun.escapeHTML() converts <, >, &, ", ' to HTML entities
   const safeVersion = escapeHtml(packageInfo.version) || '3.1.0';
@@ -1447,6 +1458,73 @@ function generateDashboard() {
   </div>
   
   <script>
+    // Color system stats (from build-time report)
+    // Note: Colors are tracked when macros are imported, so stats reflect actual usage
+    const colorStats = {
+      total: 16,
+      used: ${JSON.stringify(colorReport?.used || [])},
+      unused: ${colorReport?.unusedCount || 0},
+      unusedColors: ${JSON.stringify(colorReport?.unused || [])}
+    };
+    
+    // Update color stats on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      const colorTotal = document.getElementById('color-total');
+      const colorUsed = document.getElementById('color-used');
+      const colorUnused = document.getElementById('color-unused');
+      
+      if (colorTotal) colorTotal.textContent = colorStats.total;
+      if (colorUsed) colorUsed.textContent = colorStats.used.length;
+      if (colorUnused) {
+        colorUnused.textContent = colorStats.unused;
+        colorUnused.style.color = colorStats.unused > 0 ? '#dc3545' : '#28a745';
+      }
+    });
+    
+    // Load color report modal
+    function loadColorReport() {
+      const modal = document.createElement('div');
+      modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+      modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+      
+      const unusedList = colorStats.unusedColors.length > 0 
+        ? '<ul style="list-style: disc; margin-left: 20px;"><li>' + colorStats.unusedColors.join('</li><li>') + '</li></ul>'
+        : '<p style="color: #28a745; font-weight: 600;">✅ All colors are actively used!</p>';
+      
+      modal.innerHTML = \`
+        <div style="background:white;padding:30px;border-radius:16px;max-width:600px;max-height:85vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,0.5);position:relative;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;border-bottom:2px solid #e0e0e0;padding-bottom:15px;">
+            <h2 style="color:#667eea;font-size:1.8em;margin:0;font-weight:700;">📊 Color Usage Report</h2>
+            <button onclick="this.closest('div').parentElement.remove()" style="background:#dc3545;color:white;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-weight:600;font-size:1em;transition:all 0.2s;">✕ Close</button>
+          </div>
+          <div style="margin-bottom:20px;">
+            <h3 style="color:#333;margin-bottom:10px;">📈 Statistics</h3>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px;">
+              <div style="padding:15px;background:#f8f9fa;border-radius:8px;text-align:center;">
+                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Total</div>
+                <div style="font-size:2em;font-weight:800;color:#667eea;">\${colorStats.total}</div>
+              </div>
+              <div style="padding:15px;background:#e7f5e7;border-radius:8px;text-align:center;">
+                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Used</div>
+                <div style="font-size:2em;font-weight:800;color:#28a745;">\${colorStats.used.length}</div>
+              </div>
+              <div style="padding:15px;background:\${colorStats.unused > 0 ? '#ffe7e7' : '#e7f5e7'};border-radius:8px;text-align:center;">
+                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Unused</div>
+                <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#dc3545' : '#28a745'};">\${colorStats.unused}</div>
+              </div>
+            </div>
+            <h3 style="color:#333;margin-bottom:10px;">🚨 Unused Colors</h3>
+            \${unusedList}
+            <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+              <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
+              <span style="color:#666;font-size:0.9em;">Run <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run audit:colors</code> for detailed analysis</span>
+            </div>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+    }
+    
     // Auto-refresh every 5 seconds
     let refreshInterval = setInterval(() => {
       updateStatus();
