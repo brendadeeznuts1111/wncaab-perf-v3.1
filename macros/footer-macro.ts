@@ -8,6 +8,7 @@
  */
 
 import { DASHBOARD_META } from "./dashboard-meta.ts";
+import { WNCAAB_COLORS, hexToRgba } from "./color-macro.ts";
 
 export const generateFooter = () => `
 <footer class="dashboard-footer" style="
@@ -15,7 +16,7 @@ export const generateFooter = () => `
   color: #94a3b8;
   padding: 1.5rem 2rem;
   border-radius: 0 0 12px 12px;
-  border-top: 2px solid #80FF8040;
+  border-top: 2px solid ${hexToRgba(WNCAAB_COLORS.primary, 0.25)};
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -31,7 +32,7 @@ export const generateFooter = () => `
     <p style="margin: 0;">
       Powered by 
       <a href="https://bun.sh" target="_blank" rel="noopener" style="color: #fbbf24; font-weight: 600; text-decoration: none;">Bun</a>
-      and <span style="color: #80FF80; font-weight: 600;">Tension Mapping Macros</span>
+      and <span style="color: ${WNCAAB_COLORS.primary}; font-weight: 600;">Tension Mapping Macros</span>
     </p>
     <p style="margin: 0.25rem 0 0 0; font-size: 0.75rem; opacity: 0.6;">
       Macro-forged at ${new Date(DASHBOARD_META.buildTime).toLocaleString()}
@@ -77,7 +78,7 @@ export const generateFooter = () => `
     <a href="/api/dev/status" 
        target="_blank" 
        rel="noopener noreferrer"
-       style="color: #80FF80; font-weight: 600; text-decoration: none; padding: 0.5rem; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem;">
+       style="color: ${WNCAAB_COLORS.primary}; font-weight: 600; text-decoration: none; padding: 0.5rem; border-radius: 6px; transition: all 0.2s; display: flex; align-items: center; gap: 0.25rem;">
       📊 API Status
     </a>
   </div>

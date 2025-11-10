@@ -1242,116 +1242,18 @@ function generateDashboard() {
     .refresh-btn:hover {
       background: #5568d3;
     }
-    .header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 12px 12px 0 0;
-      margin: -30px -30px 30px -30px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-    }
-    .header-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 20px;
-    }
-    .header-title {
-      flex: 1;
-    }
-    .header-title h1 {
-      color: white;
-      margin-bottom: 5px;
-      font-size: 2.5em;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    }
-    .header-title .subtitle {
-      color: rgba(255,255,255,0.9);
-      font-size: 1.1em;
-      margin-bottom: 0;
-    }
-    .header-meta {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
-    }
-    .version-badge {
-      background: rgba(255,255,255,0.2);
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-weight: 700;
-      font-size: 0.9em;
-      backdrop-filter: blur(10px);
-      border: 1px solid rgba(255,255,255,0.3);
-    }
-    .header-links {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .header-link {
-      color: white;
-      text-decoration: none;
-      padding: 6px 12px;
-      border-radius: 6px;
-      background: rgba(255,255,255,0.15);
-      font-size: 0.85em;
-      transition: all 0.2s;
-      border: 1px solid rgba(255,255,255,0.2);
-    }
-    .header-link:hover {
-      background: rgba(255,255,255,0.25);
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    }
-    .footer {
-      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-      color: white;
-      padding: 30px;
-      border-radius: 0 0 12px 12px;
-      margin: 40px -30px -30px -30px;
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.2);
-    }
-    .footer-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 20px;
-    }
-    .footer-left {
-      flex: 1;
-    }
-    .footer-right {
-      display: flex;
-      gap: 20px;
-      flex-wrap: wrap;
-    }
-    .footer-link {
-      color: rgba(255,255,255,0.9);
-      text-decoration: none;
-      padding: 8px 16px;
-      border-radius: 8px;
-      background: rgba(255,255,255,0.1);
-      transition: all 0.2s;
-      border: 1px solid rgba(255,255,255,0.1);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .footer-link:hover {
-      background: rgba(255,255,255,0.2);
-      color: white;
-      transform: translateY(-2px);
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-    }
-    .footer-info {
-      color: rgba(255,255,255,0.7);
-      font-size: 0.9em;
-      margin-top: 10px;
-    }
+    /* ⚠️ ARCHIVED: Old header/footer styles - No longer used
+     * 
+     * These styles have been replaced by macro-forged components:
+     * - macros/header-macro.ts - Generates header HTML with inline styles
+     * - macros/footer-macro.ts - Generates footer HTML with inline styles
+     * 
+     * See: archive/old-header-footer-styles.css for archived styles
+     * 
+     * @deprecated Use macro-generated header/footer instead
+     */
+    /* .header { ... } - ARCHIVED */
+    /* .footer { ... } - ARCHIVED */
   </style>
 </head>
 <body>

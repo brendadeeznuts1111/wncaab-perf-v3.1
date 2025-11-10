@@ -8,23 +8,18 @@
  */
 
 import { DASHBOARD_META } from "./dashboard-meta.ts";
-
-// Contrast color helper (build-time)
-function getContrastColor(hex: string): string {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
-  return brightness > 128 ? '#0f172a' : '#f8fafc';
-}
+import { WNCAAB_COLORS, getContrastColor, hexToRgba } from "./color-macro.ts";
 
 // Primary color from tension map (green-thin edge #80FF80)
-const PRIMARY_HEX = "#80FF80";
+// ✅ Using WNCAAB theme colors from color-macro.ts
+const PRIMARY_HEX = WNCAAB_COLORS.primary;
+const PRIMARY_DARK = WNCAAB_COLORS.primaryDark;
 const CONTRAST_COLOR = getContrastColor(PRIMARY_HEX);
+const LIVE_INDICATOR = WNCAAB_COLORS.liveIndicator;
 
 export const generateHeader = () => `
 <header class="dashboard-header" style="
-  background: linear-gradient(135deg, ${PRIMARY_HEX} 0%, #4ade80 100%);
+  background: linear-gradient(135deg, ${PRIMARY_HEX} 0%, ${PRIMARY_DARK} 100%);
   color: ${CONTRAST_COLOR};
   padding: 1.5rem 2rem;
   border-radius: 12px 12px 0 0;
@@ -36,7 +31,7 @@ export const generateHeader = () => `
   top: 0;
   z-index: 1000;
   backdrop-filter: blur(10px);
-  border: 2px solid ${PRIMARY_HEX}40;
+  border: 2px solid ${hexToRgba(PRIMARY_HEX, 0.25)};
   margin: -30px -30px 30px -30px;
 ">
   <div class="header-left">
@@ -54,7 +49,7 @@ export const generateHeader = () => `
         display: inline-block;
         width: 8px;
         height: 8px;
-        background: #ef4444;
+        background: ${LIVE_INDICATOR};
         border-radius: 50%;
         animation: pulse 2s infinite;
         margin-left: 0.5rem;
