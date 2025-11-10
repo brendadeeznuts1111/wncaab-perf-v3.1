@@ -1,27 +1,11 @@
 /**
- * Scan Index Generator - Native Bun API Implementation (v14.1 Final)
- * 
- * Generates compressed scan index using native Bun APIs:
- * - node:zlib zstdCompressSync() for compression (ecosystem compatibility, native perf)
- * - Bun.file() / Bun.write() for I/O (auto-close on GC)
- * - Bun.which() for binary detection
- * - Bun.Glob for file discovery (streaming support)
- * - Dual-write (.index + .index.zst) for zero-breaking-change migration
- * 
- * Performance: ~7ms compression (both node:zlib and bun module are native bindings)
- * Rationale: node:zlib import provides ecosystem compatibility for hybrid Node.js/Bun projects
+ * Scan Index Generator - Builds compressed scan index using native Bun APIs
  */
 
 import { $ } from "bun";
-import { zstdCompressSync, zstdDecompressSync } from "node:zlib";
 import { secrets } from "bun";
 
-/**
- * Build scan index from ripgrep matches
- * Uses native Bun APIs for optimal performance
- */
 export async function buildScanIndex(pattern: string = "TODO", outputPath: string = ".scan.index.zst") {
-  // Validate ripgrep binary using native Bun API
   const rgPath = Bun.which("rg");
   if (!rgPath) {
     throw new Error(
@@ -34,7 +18,6 @@ export async function buildScanIndex(pattern: string = "TODO", outputPath: strin
 
   console.log(`🔍 Using ripgrep at: ${rgPath}`);
 
-  // Use Bun.Glob for file discovery (streaming support for large repos)
   const glob = new Bun.Glob("**/*.{ts,tsx,js,jsx}");
   const files: string[] = [];
   
@@ -44,18 +27,15 @@ export async function buildScanIndex(pattern: string = "TODO", outputPath: strin
 
   console.log(`📂 Found ${files.length} files to scan`);
 
-  // P1 Hardened: Run ripgrep with timeout and maxBuffer to prevent CI hangs
-  // Prevents infinite hang on symlink loops or corrupted files
-  // Catches catastrophic regex backtracking (e.g., (a*)* on 1GB file)
+  // Hardened: timeout and maxBuffer to prevent CI hangs
   const matches = await Promise.all(
     files.map(async (file) => {
       try {
-        // ✅ Hardened: 30s timeout, 50MB output limit
         const proc = Bun.spawn({
           cmd: [rgPath, '--files-with-matches', pattern, file],
           stdout: 'pipe',
-          timeout: 30000,        // Kill after 30s (P1: Prevents CI hang)
-          maxBuffer: 50 * 1024 * 1024, // 50MB limit (P1: Catch runaway regex)
+          timeout: 30000,
+          maxBuffer: 50 * 1024 * 1024,
         });
 
         const output = await new Response(proc.stdout).text();
@@ -63,7 +43,6 @@ export async function buildScanIndex(pattern: string = "TODO", outputPath: strin
         
         return exitCode === 0 ? file : null;
       } catch (error) {
-        // Timeout or buffer exceeded - skip this file
         console.warn(`⚠️  Skipping ${file}: ${error.message}`);
         return null;
       }
@@ -76,16 +55,11 @@ export async function buildScanIndex(pattern: string = "TODO", outputPath: strin
   if (indexContent.length === 0) {
     console.log("⚠️  No matches found, creating empty index");
     await Bun.write(outputPath, Buffer.alloc(0));
-    // Dual-write: also write uncompressed for migration safety
     await Bun.write(outputPath.replace(".zst", ""), "");
     return { files: 0, compressedSize: 0, originalSize: 0 };
   }
 
-  // Native compression via node:zlib (ecosystem compatibility, native perf)
-  // Both node:zlib and bun module use native bindings - <1ms difference
-  const compressed = zstdCompressSync(Buffer.from(indexContent), { level: 3 });
-
-  // Dual-write: compressed (.zst) + uncompressed (.index) for zero-breaking-change migration
+  const compressed = Bun.zstdCompressSync(Buffer.from(indexContent), { level: 3 });
   await Bun.write(outputPath, compressed);
   await Bun.write(outputPath.replace(".zst", ""), indexContent);
 
@@ -102,17 +76,6 @@ export async function buildScanIndex(pattern: string = "TODO", outputPath: strin
   };
 }
 
-/**
- * Load scan index with native Bun APIs
- * Uses DisposableStack for explicit resource management (P0 leak-proofing)
- * Prefers .zst compressed index, falls back to uncompressed .index for migration
- * 
- * v14.2: Supports remote URLs via fetch() with automatic zstd decompression
- */
-
-/**
- * Load config from bunfig.toml (v14.2)
- */
 async function loadRemoteConfig(): Promise<{ index?: string; fallback?: string; timeout?: number } | null> {
   try {
     const tomlContent = await Bun.file('bunfig.toml').text();
@@ -172,7 +135,7 @@ export async function loadScanIndex(indexPath: string = ".scan.index.zst"): Prom
   if (hasCompressed) {
     // Load compressed index (preferred)
     const compressed = await compressedFile.bytes();
-    const decompressed = zstdDecompressSync(compressed);
+    const decompressed = Bun.zstdDecompressSync(compressed);
     const content = new TextDecoder().decode(decompressed);
     const files = content.split("\n").filter(Boolean);
     console.log(`📖 Loaded ${files.length} files from compressed index`);
@@ -187,16 +150,9 @@ export async function loadScanIndex(indexPath: string = ".scan.index.zst"): Prom
 }
 
 /**
- * Load scan index from remote URL (v14.2 Hardened)
- * Uses Bun's automatic fetch() decompression for Content-Encoding: zstd
- * P1: Hardened with timeout & maxBuffer to prevent CI hangs
- * P2: Optional Bun.secrets for private CDN authentication
- * Falls back to local file if remote fetch fails
- * 
- * @example
- * const files = await loadRemoteIndex("https://cdn.example.com/.scan.index.zst", ".scan.index");
+ * Load scan index - prefers compressed, falls back to uncompressed
  */
-export async function loadRemoteIndex(url: string, fallbackPath?: string): Promise<string[]> {
+export async function loadScanIndex(indexPath: string = ".scan.index.zst"): Promise<string[]> {
   await using stack = new DisposableStack();
   
   // Validate HTTPS requirement

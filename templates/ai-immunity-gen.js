@@ -3,9 +3,8 @@
  * 
  * Generates AI-scored immunity tags with Grok integration
  * NOTE: This is a prototype/concept - requires actual Grok API integration
+ * Uses native Bun APIs - requires Bun 1.3.0+
  */
-
-import { file } from 'bun';
 
 const schema = {
   linker: ['ai-hoisted', 'ai-isolated', 'hoisted', 'isolated'],

@@ -43,11 +43,40 @@ const server = Bun.serve({
     }
 
     // GET /api/spline/render
+    // ✅ Bun-Specific Optimization: WASM + SIMD for vector math
     if (req.method === 'GET' && url.pathname === '/api/spline/render') {
       const points = parseInt(url.searchParams.get('points') || '1000', 10);
       const type = (url.searchParams.get('type') || 'catmull-rom') as SplineConfig['type'];
       const tension = parseFloat(url.searchParams.get('tension') || '0.5');
 
+      try {
+        // ✅ Pattern: WASM + SIMD for vector math (non-blocking)
+        // Try to load WASM module (if available)
+        const wasm = await import('./spline.wasm').catch(() => null);
+        
+        if (wasm && typeof wasm.render === 'function') {
+          // ✅ Pattern: Offload to WASM (non-blocking)
+          const rendered = await wasm.render(points, {
+            simd: true, // Enable SIMD if supported
+            threads: navigator.hardwareConcurrency || 4,
+            type,
+            tension,
+          });
+          
+          // ✅ Pattern: Stream binary output
+          return new Response(rendered.buffer, {
+            headers: {
+              ...headers,
+              'Content-Type': 'application/octet-stream',
+            },
+          });
+        }
+      } catch (error) {
+        // Fallback to JavaScript renderer if WASM not available
+        console.warn(`[Spline] WASM not available, using JavaScript renderer: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      
+      // Fallback: Use JavaScript renderer (fast, but can be optimized with WASM)
       const path = renderer.render({
         type,
         points,

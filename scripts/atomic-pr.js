@@ -98,6 +98,7 @@ async function atomicPRWorkflow(options) {
       if (existingBranches.stdout.toString().trim()) {
         warn(`Branch ${branchName} already exists, checking out...`);
         await $`git checkout ${branchName}`;
+        workflowState.branchCreated = true; // Mark as created/checked out
       } else {
         await $`git checkout -b ${branchName}`;
         success(`Created branch: ${branchName}`);

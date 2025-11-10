@@ -18,3 +18,16 @@ timeout = 30000
 
 [debug]
 editor = "code"
+
+[run]
+# Preload WASM models before first request
+# Note: Create ./src/ai/warmup.ts to preload ONNX models and WASM modules
+preload = ["./src/ai/warmup.ts"]
+
+[test]
+# Run tests with worker isolation
+coverage = true
+
+[install]
+# Faster installs for CI
+exact = true

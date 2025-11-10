@@ -40,6 +40,11 @@ jobs:
       - name: Validate config sections
         run: bun run validate:config --strict
       
+      - name: Verify AI Immunity
+        run: bun --no-addons run scripts/index-ai-immunity.ts --heal --verify --trace
+        env:
+          BUN_NO_ADDONS: 1
+      
       - name: Upload scan results
         if: always()
         uses: actions/upload-artifact@v4

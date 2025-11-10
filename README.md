@@ -17,3 +17,12 @@ bun rules:validate
 
 See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
+## Documentation
+
+- **[API Reference](./docs/api/)** - Complete Bun API reference and quick guides
+- **[Guides](./docs/guides/)** - How-to guides and workflows
+- **[Version Docs](./docs/versions/)** - Version-specific feature documentation
+- **[Security](./SECURITY.md)** - Security documentation and best practices
+
+See [docs/README.md](./docs/README.md) for full documentation index.
+

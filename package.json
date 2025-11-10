@@ -41,7 +41,9 @@
     "grep:ai-immunity": "rg --type toml '\\[AI-IMMUNITY:.*\\]' --colors 'match:fg:yellow' --colors 'match:style:bold'",
     "grep:ai-hoisted": "rg '\\[AI-IMMUNITY:ai-hoisted[^]]*\\]' --type toml --files-with-matches",
     "grep:ai-disable": "rg '\\[AI-IMMUNITY:[^]]*ai-disable[^]]*\\]' --type toml --no-heading",
-    "index:ai-immunity": "rg --files-with-matches --no-messages '\\[AI-IMMUNITY:.*\\]' > .ai-immunity.index && echo '🟢 AI-Immunity Index built!'",
+    "index:ai-immunity": "bun run scripts/index-ai-immunity.ts",
+    "map:edge": "bun run scripts/map-edge.ts",
+    "absorb:cli-output": "bun run graph-propagation/cli-absorb.ts",
     "audit:ai-immunity": "bun run scripts/validate-ai-immunity.js",
     "gen:ai-tag": "bun run templates/ai-immunity-gen.js",
     "ai:config": "bun run scripts/ai-config.js",
@@ -51,6 +53,12 @@
     "bun:pr-asan": "bun run scripts/bun-pr-test.ts --asan",
     "bun:pr-version": "bun run scripts/bun-pr-test.ts --version",
     "atomic:pr": "bun run scripts/atomic-pr.js",
+    "dev": "PORT=3002 bun --hot scripts/dev-server.ts",
+    "dev:server": "bun run scripts/dev-server.ts",
+    "prod": "bun scripts/dev-server.ts",
+    "build:tension-states": "bun run build/tension-page-macro.ts",
+    "build:tension-page": "bun run build/render-tension-page.ts",
+    "build:tension": "bun run build:tension-states && bun run build:tension-page",
     "version": "bun run scripts/version-tracker.js",
     "version:check": "bun run scripts/version-tracker.js"
   },
@@ -59,6 +67,9 @@
   },
   "engines": {
     "bun": ">=1.3.0"
+  },
+  "bin": {
+    "atomic-pr": "./scripts/atomic-pr.js"
   },
   "bunReleaseNotes": "BUN-RELEASE-NOTES-ENHANCED.md",
   "changelog": "CHANGELOG.md"

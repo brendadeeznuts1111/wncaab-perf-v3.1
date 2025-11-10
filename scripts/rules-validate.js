@@ -2,7 +2,7 @@
  * Rules Validate Script - Native Bun API Implementation
  * 
  * Validates all rules (perf, macro, etc.) against bun.yaml schema
- * Uses native Bun.file().yaml() API with js-yaml fallback
+ * Uses native Bun.file().yaml() API - requires Bun 1.3.0+
  */
 
 import { loadConfig } from './rules-config.js';
