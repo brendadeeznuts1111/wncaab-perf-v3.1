@@ -2,6 +2,14 @@
   "name": "wncaab-perf-v3.1",
   "version": "3.1.0",
   "description": "WNCAAB Performance Visualization v3.1 - Grep-first metrics with schema validation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/brendadeeznuts1111/wncaab-perf-v3.1.git"
+  },
+  "homepage": "https://github.com/brendadeeznuts1111/wncaab-perf-v3.1",
+  "bugs": {
+    "url": "https://github.com/brendadeeznuts1111/wncaab-perf-v3.1/issues"
+  },
   "scripts": {
     "rules:config": "bun run scripts/rules-config.js",
     "rules:pr": "bun run scripts/rules-pr.js",
