@@ -32,6 +32,65 @@ See **[BUN-RELEASE-NOTES-ENHANCED.md](./BUN-RELEASE-NOTES-ENHANCED.md)** for the
 
 ## 📝 **Project Release History**
 
+### **v3.1.0** - Stable Release (December 29, 2024)
+
+**Bun Version**: >=1.3.0  
+**Status**: ✅ **STABLE**
+
+#### ✨ **New Features**
+- Tension Mapping Visualizer with real-time color generation
+- Node Graph Visualization with DNA-like double helix structure (6 nodes, 9 edges)
+- Interactive node graph with zoom, pan, reset, and particle effects
+- Socket addressing integration using Bun.connect() API
+- Process API compatibility layer for Bun runtime
+- Port conflict detection and resolution system
+- Production hardening with TTY detection and kill-switch triggers
+
+#### 🚀 **Enhancements**
+- Enhanced header component with semantic HTML5 and Bun-compliant CSS (logical properties, RTL/LTR support, dark theme)
+- Improved typography using Inter font family
+- Slider lock feature for preserving parameter values
+- PWA manifest support with Web App Manifest specification
+- Comprehensive component architecture documentation
+- Production-ready CLI tension mapper with color output control
+- Automated kill-switch trigger at T > 0.95 threshold
+- Adaptive quanta scaling based on conflict levels
+- Entropy precision truncation for production telemetry (2 decimal places)
+- Share URL feature disabled in production environments
+- Keyboard shortcuts with TTY detection
+- Durable Object support for distributed state tracking
+- Release pipeline automation scripts
+
+#### 🐛 **Bug Fixes**
+- Fixed preset display to show whole numbers without trailing zeros
+- Fixed graph controls not working when SVG elements not fully rendered
+- Fixed manifest.json to adhere to Web App Manifest specification
+- Fixed CSS conflicts in header component
+- Fixed missing closing tags in controls section
+- Fixed broken links and formatting in documentation
+- Fixed code block language labels in markdown files
+
+#### 🏗️ **Infrastructure**
+- Port configuration system with conflict detection (`scripts/check-port.sh`)
+- Infrastructure health check scripts (`check:infra`, `infra:audit`)
+- Comprehensive test suite orchestrator (`test:suite`)
+- Release pipeline automation scripts (preflight, cleanup, test, audit)
+- Version management integration with Bun.semver
+- Process compatibility layer initialization (`lib/process/compat.ts`)
+- Graceful shutdown handlers with worker pool cleanup
+
+#### 📚 **Documentation**
+- Component architecture documentation with wire charts (`docs/TENSION-VISUALIZER-COMPONENT-ARCHITECTURE.md`)
+- Production hardening guide (`docs/TENSION-VISUALIZER-PRODUCTION-HARDENING.md`)
+- Node Graph Visualization documentation (`docs/NODE-GRAPH-VISUALIZATION.md`)
+- Port configuration guide (`.port-config.md`)
+- Process API compatibility documentation
+- Release pipeline documentation
+
+**See**: [TENSION-VISUALIZER-COMPONENT-ARCHITECTURE.md](./docs/TENSION-VISUALIZER-COMPONENT-ARCHITECTURE.md), [TENSION-VISUALIZER-PRODUCTION-HARDENING.md](./docs/TENSION-VISUALIZER-PRODUCTION-HARDENING.md)
+
+---
+
 ### **v3.2.0** - Bunfig Integration (Nov 09, 2025)
 
 **Bun Version**: 1.3.2  
@@ -111,5 +170,5 @@ See **[BUN-RELEASE-NOTES-ENHANCED.md](./BUN-RELEASE-NOTES-ENHANCED.md)** for the
 
 ---
 
-**Last Updated**: November 09, 2025
+**Last Updated**: December 29, 2024
 

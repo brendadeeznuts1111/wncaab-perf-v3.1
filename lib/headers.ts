@@ -14,7 +14,7 @@
 /**
  * API domain types for X-API-Domain header
  */
-export type ApiDomain = 'dev' | 'tension' | 'gauge' | 'ai' | 'validate' | 'system';
+export type ApiDomain = 'dev' | 'tension' | 'gauge' | 'ai' | 'validate' | 'system' | 'spline' | 'bet-type' | 'glossary';
 
 /**
  * Options for generating standardized API headers

@@ -88,12 +88,19 @@ export function validationErrorResponse(
 
 /**
  * Escape HTML string for safe rendering
- * Uses Bun.escapeHTML() which is optimized for large input
+ * ✅ Uses Bun.escapeHTML() - optimized for large input (480 MB/s - 20 GB/s on M1X)
  * 
- * @param str - String to escape
- * @returns Escaped HTML string
+ * Performance: Bun.escapeHTML() is highly optimized with SIMD instructions
+ * Handles non-string types automatically (converts to string first)
+ * 
+ * @param str - String to escape (or value that will be converted to string)
+ * @returns Escaped HTML string safe for rendering in HTML
+ * 
+ * [#REF] https://bun.com/docs/runtime/utils#bun-escapehtml
  */
-export function escapeHtml(str: string | undefined | null): string {
-  return Bun.escapeHTML(String(str ?? ''));
+export function escapeHtml(str: string | undefined | null | number | boolean | object): string {
+  // Bun.escapeHTML() handles non-string types automatically, but we need to handle null/undefined
+  if (str == null) return '';
+  return Bun.escapeHTML(str);
 }
 
