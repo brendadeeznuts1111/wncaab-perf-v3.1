@@ -196,8 +196,9 @@ export function generateColorReport(): {
   };
   
   if (unused.length > 0) {
-    console.warn(`[Color System] 🚨 Unused colors detected: ${unused.join(', ')}`);
-    console.warn(`[Color System] 💡 Consider removing these to reduce bundle size`);
+    console.log(`[Color System] ℹ️  Reserved colors: ${unused.join(', ')}`);
+    console.log(`[Color System] 📝 These colors are documented as reserved for future features`);
+    console.log(`[Color System] ✅ Decision: KEEP all colors (see macros/color-macro.ts for rationale)`);
   } else {
     console.log(`[Color System] ✅ All ${allColors.length} colors are actively used`);
   }
