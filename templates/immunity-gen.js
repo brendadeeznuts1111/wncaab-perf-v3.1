@@ -3,9 +3,8 @@
  * 
  * Generates immunity tags for Bun v1.3.2 breaking changes
  * Creates readable + grepable tags for linker/auto-install protection
+ * Uses native Bun APIs - requires Bun 1.3.0+
  */
-
-import { file } from 'bun';
 
 const schema = {
   linker: ['hoisted', 'isolated'],

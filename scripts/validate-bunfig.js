@@ -4,9 +4,8 @@
  * Validates bunfig.toml against YAML schema
  * Checks types, enums, patterns, and conditionals
  * Generates grepable error logs
+ * Uses native Bun.file().yaml() API - requires Bun 1.3.0+
  */
-
-import yaml from 'js-yaml';
 
 async function validateBunfig() {
   const args = Bun.argv.slice(2);
@@ -19,8 +18,8 @@ async function validateBunfig() {
     
     let schema;
     try {
-      const schemaContent = await Bun.file('bunfig.schema.yaml').text();
-      schema = yaml.load(schemaContent);
+      // Native Bun .yaml() API - no library dependencies
+      schema = await Bun.file('bunfig.schema.yaml').yaml();
     } catch (error) {
       console.warn(`⚠️  bunfig.schema.yaml not found or invalid: ${error.message}`);
       return;

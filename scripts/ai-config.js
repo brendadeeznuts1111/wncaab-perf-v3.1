@@ -4,10 +4,16 @@
 
 async function loadAiConfig() {
   try {
-    const configContent = await Bun.file('bun-ai.toml').text();
+    // Try APPENDIX/bun-ai.toml first, then bun-ai.toml in current dir
+    let configPath = 'APPENDIX/bun-ai.toml';
+    if (!(await Bun.file(configPath).exists())) {
+      configPath = 'bun-ai.toml';
+    }
+    
+    const configContent = await Bun.file(configPath).text();
     const config = Bun.TOML.parse(configContent);
     
-    console.log('✅ AI Config loaded:');
+    console.log(`✅ AI Config loaded from: ${configPath}`);
     console.log(`   Grok endpoint: ${config.ai?.grokEndpoint || 'not set'}`);
     console.log(`   Predict drift: ${config.ai?.predictDrift || 0.99}`);
     console.log(`   Auto heal: ${config.ai?.autoHeal || false}`);

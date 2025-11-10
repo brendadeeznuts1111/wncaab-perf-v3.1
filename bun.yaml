@@ -1,0 +1,69 @@
+# bun.yaml - Performance Visualization v3.1
+perf:
+  visualization:
+    schema:
+      domain: [perf-vis, bun-native]
+      scope: [scan, api]
+      state: [idle, proc]
+      time:
+        pattern: '^\d+\.\d+(ms|s)?$'
+      memory:
+        # STRICT: Requires space before unit, unit is required (not optional)
+        pattern: '^\d+\.?\d* (MB|GB|KB)$'
+    defaults:
+      domain: perf-vis
+      state: idle
+    grep:
+      patterns:
+        all-tags: '\[PERF:([A-Z-]+)-([A-Z-]+)-([idle|proc])-(\d+\.\d+(ms|s)?)\]'
+        by-domain: '\[PERF:perf-vis\]'
+      rg-flags: '--type md --no-heading --with-filename --colors match:fg:cyan:style:bold --pcre2'
+  validate:
+    hooks:
+      - parse-perf: true
+      - grep-index: true
+
+ai-immunity:
+  indexing:
+    schema:
+      linker: [ai-hoisted, ai-isolated, hoisted, isolated]
+      auto: [ai-disable, ai-enable, disable, enable]
+      score:
+        pattern: '^0\.\d{2}$'
+        min: 0.85
+        max: 0.99
+      tag:
+        pattern: '\[AI-IMMUNITY:([a-z-]+)-([a-z-]+)\]\[SCORE:([0-9.]+)\]'
+        grepable: 'ai-immunity-{linker}-{auto}-score-{score}'
+    defaults:
+      threshold: 0.85
+      semantic-threshold: 0.85
+      top-k: 10
+    grep:
+      patterns:
+        all-tags: '\[AI-IMMUNITY:([^\]]+)\](?:\[SCORE:([0-9.]+)\])?'
+        by-linker: '\[AI-IMMUNITY:({linker})[^\]]*\]'
+        by-auto: '\[AI-IMMUNITY:[^\]]*-({auto})[^\]]*\]'
+        high-score: '\[AI-IMMUNITY:[^\]]*\]\[SCORE:([0-9][0-9]\.\d+)\]'
+      rg-flags: '--type toml --colors match:fg:yellow:style:bold'
+    semantic:
+      embedding:
+        provider: grok
+        dimensions: 512
+        api-endpoint: 'https://api.x.ai/v1/grok/embed'
+      similarity:
+        method: cosine
+        threshold: 0.85
+      index:
+        grep-path: '.ai-immunity.index'
+        semantic-path: '.ai-immunity.semantic'
+        enriched-path: '.ai-immunity.enriched.json'
+    validate:
+      hooks:
+        - parse-tags: true
+        - validate-schema: true
+        - check-embeddings: true
+        - heal-drift: true
+      drift-threshold: 0.95
+      auto-heal: true
+

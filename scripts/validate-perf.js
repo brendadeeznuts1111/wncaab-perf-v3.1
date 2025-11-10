@@ -2,26 +2,19 @@
  * Performance Validation Script - Native Bun API Implementation
  * 
  * Validates performance tags in markdown files against bun.yaml schema
- * Uses native Bun.file().yaml() API with js-yaml fallback
+ * Uses native Bun.file().yaml() API - requires Bun 1.3.0+
  * Simplified single-pass validation with early returns
  */
 
 import { glob } from 'bun';
 
 /**
- * Load config with native .yaml() API and fallback
+ * Load config using Bun's native .yaml() API
+ * Requires Bun 1.3.0+ - no library dependencies
  */
 async function loadConfig() {
-  try {
-    // Primary: Native Bun .yaml() API (Bun 1.3.0+)
+  // Native Bun .yaml() API - no library dependencies
     return await Bun.file('bun.yaml').yaml();
-  } catch (error) {
-    // Fallback: js-yaml for Bun <1.3.0
-    // DEPRECATED: Remove in Bun 2.0 when <1.3.0 support dropped
-    const yaml = await import('js-yaml');
-    const yamlContent = await Bun.file('bun.yaml').text();
-    return yaml.load(yamlContent);
-  }
 }
 
 /**

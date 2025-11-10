@@ -27,7 +27,13 @@ async function validateAiImmunity() {
   const strict = args.includes('--strict');
   
   try {
-    const configContent = await Bun.file('bun-ai.toml').text();
+    // Try APPENDIX/bun-ai.toml first, then bun-ai.toml in current dir
+    let configPath = 'APPENDIX/bun-ai.toml';
+    if (!(await Bun.file(configPath).exists())) {
+      configPath = 'bun-ai.toml';
+    }
+    
+    const configContent = await Bun.file(configPath).text();
     
     // Find all AI-immunity tags
     const immunityMatches = configContent.match(/\[AI-IMMUNITY:([a-z-]+)-([a-z-]+)\]\[SCORE:([0-9.]+)\]/g);

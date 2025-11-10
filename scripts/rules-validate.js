@@ -2,7 +2,7 @@
  * Rules Validate Script - Native Bun API Implementation
  * 
  * Validates all rules (perf, macro, etc.) against bun.yaml schema
- * Uses native Bun.file().yaml() API with js-yaml fallback
+ * Uses native Bun.file().yaml() API - requires Bun 1.3.0+
  */
 
 import { loadConfig } from './rules-config.js';
@@ -28,9 +28,15 @@ async function validateAllRules() {
   // Validate perf rules if perf section exists
   if (config.perf?.visualization) {
     try {
-      const { validatePerf } = await import('./validate-perf.js');
-      // Note: validatePerf is async but doesn't export, so we'll inline the logic
-      const perfFiles = await glob(['**/*.md'], { cwd: './perf', absolute: true });
+      // Check if perf directory exists
+      const perfDir = Bun.file('./perf');
+      const perfDirExists = await perfDir.exists().catch(() => false);
+      
+      if (!perfDirExists) {
+        console.log('ℹ️  Perf directory not found, skipping perf validation');
+      } else {
+        // Note: validatePerf is async but doesn't export, so we'll inline the logic
+        const perfFiles = await glob(['**/*.md'], { cwd: './perf', absolute: true }).catch(() => []);
       
       for (const file of perfFiles) {
         const content = await Bun.file(file).text();
@@ -72,6 +78,7 @@ async function validateAllRules() {
           }
         }
       }
+      }
     } catch (error) {
       errors.push(`❌ Perf validation error: ${error.message}`);
     }
@@ -80,7 +87,14 @@ async function validateAllRules() {
   // Validate macro rules if wncaab.macro section exists
   if (config.wncaab?.macro) {
     try {
-      const macroFiles = await glob(['**/*.md'], { cwd: './macros', absolute: true });
+      // Check if macros directory exists
+      const macroDir = Bun.file('./macros');
+      const macroDirExists = await macroDir.exists().catch(() => false);
+      
+      if (!macroDirExists) {
+        console.log('ℹ️  Macros directory not found, skipping macro validation');
+      } else {
+        const macroFiles = await glob(['**/*.md'], { cwd: './macros', absolute: true }).catch(() => []);
       
       for (const file of macroFiles) {
         const content = await Bun.file(file).text();
@@ -120,6 +134,7 @@ async function validateAllRules() {
             validCount++;
           }
         }
+      }
       }
     } catch (error) {
       errors.push(`❌ Macro validation error: ${error.message}`);

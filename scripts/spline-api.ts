@@ -9,6 +9,8 @@
  */
 
 import { SplineRenderer, SplineConfig } from './spline-renderer.ts';
+// ✅ Bun-native: Use Bun.env for CPU count, fallback to os.cpus() (standard API)
+import { cpus } from 'node:os';
 
 // Global renderer instance
 const renderer = new SplineRenderer();
@@ -43,11 +45,45 @@ const server = Bun.serve({
     }
 
     // GET /api/spline/render
+    // ✅ Bun-Specific Optimization: WASM + SIMD for vector math
     if (req.method === 'GET' && url.pathname === '/api/spline/render') {
       const points = parseInt(url.searchParams.get('points') || '1000', 10);
       const type = (url.searchParams.get('type') || 'catmull-rom') as SplineConfig['type'];
       const tension = parseFloat(url.searchParams.get('tension') || '0.5');
 
+      try {
+        // ✅ Pattern: WASM + SIMD for vector math (non-blocking)
+        // Try to load WASM module (if available)
+        const wasm = await import('./spline.wasm').catch(() => null);
+        
+        if (wasm && typeof wasm.render === 'function') {
+          // ✅ Pattern: Offload to WASM (non-blocking)
+          // ✅ Bun-native: Use Bun.env.CPU_COUNT or os.cpus().length (zero-import fallback)
+          const cpuCount = Bun.env.CPU_COUNT 
+            ? parseInt(Bun.env.CPU_COUNT, 10) 
+            : (cpus()?.length || 4);
+          const threadCount = Math.min(cpuCount, 8); // Cap at 8 for stability
+          const rendered = await wasm.render(points, {
+            simd: true, // Enable SIMD if supported
+            threads: threadCount,
+            type,
+            tension,
+          });
+          
+          // ✅ Pattern: Stream binary output
+          return new Response(rendered.buffer, {
+            headers: {
+              ...headers,
+              'Content-Type': 'application/octet-stream',
+            },
+          });
+        }
+      } catch (error) {
+        // Fallback to JavaScript renderer if WASM not available
+        console.warn(`[Spline] WASM not available, using JavaScript renderer: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      
+      // Fallback: Use JavaScript renderer (fast, but can be optimized with WASM)
       const path = renderer.render({
         type,
         points,
