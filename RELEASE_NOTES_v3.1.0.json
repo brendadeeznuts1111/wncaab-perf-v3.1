@@ -1,0 +1,55 @@
+{
+  "version": "3.1.0",
+  "releaseDate": "2025-11-10",
+  "status": "stable",
+  "features": [
+    "Tension Mapping Visualizer with real-time color generation",
+    "Node Graph Visualization with DNA-like double helix structure",
+    "Interactive node graph with zoom, pan, reset, and particle effects",
+    "Socket addressing integration using Bun.connect() API",
+    "Process API compatibility layer for Bun runtime",
+    "Port conflict detection and resolution system",
+    "Production hardening with TTY detection and kill-switch triggers"
+  ],
+  "enhancements": [
+    "Enhanced header component with semantic HTML5 and Bun-compliant CSS",
+    "Improved typography using Inter font family",
+    "Slider lock feature for preserving parameter values",
+    "PWA manifest support with Web App Manifest specification",
+    "Comprehensive component architecture documentation",
+    "Production-ready CLI tension mapper with color output control",
+    "Automated kill-switch trigger at T > 0.95 threshold",
+    "Adaptive quanta scaling based on conflict levels",
+    "Entropy precision truncation for production telemetry",
+    "Share URL feature disabled in production environments",
+    "Keyboard shortcuts with TTY detection",
+    "Durable Object support for distributed state tracking"
+  ],
+  "fixes": [
+    "Fixed preset display to show whole numbers without trailing zeros",
+    "Fixed graph controls not working when SVG elements not fully rendered",
+    "Fixed manifest.json to adhere to Web App Manifest specification",
+    "Fixed CSS conflicts in header component",
+    "Fixed missing closing tags in controls section",
+    "Fixed broken links and formatting in documentation",
+    "Fixed code block language labels in markdown files"
+  ],
+  "breakingChanges": [],
+  "infrastructure": [
+    "Port configuration system with conflict detection",
+    "Infrastructure health check scripts",
+    "Comprehensive test suite orchestrator",
+    "Release pipeline automation scripts",
+    "Version management integration with Bun.semver",
+    "Process compatibility layer initialization",
+    "Graceful shutdown handlers with worker pool cleanup"
+  ],
+  "documentation": [
+    "Component architecture documentation with wire charts",
+    "Production hardening guide",
+    "Node Graph Visualization documentation",
+    "Port configuration guide",
+    "Process API compatibility documentation",
+    "Release pipeline documentation"
+  ]
+}

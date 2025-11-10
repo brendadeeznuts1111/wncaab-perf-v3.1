@@ -4,7 +4,11 @@
  * 
  * Detects parabolic, exponential, logarithmic patterns in price series
  * Uses deterministic curve detection (ONNX model placeholder)
+ * 
+ * Now uses pure JS curve-detector.ts for pattern detection
  */
+
+import { detectCurves, type Point } from '../scripts/ai/curve-detector.ts';
 
 export interface PriceSeries {
   prices: number[];
@@ -33,38 +37,42 @@ function normalizeSeries(series: number[]): number[] {
 }
 
 /**
- * Detect curve pattern (deterministic approximation)
+ * Detect curve pattern using curve-detector.ts
+ * @BUN Uses pure JS curve detection from scripts/ai/curve-detector.ts
  */
 function detectCurvePattern(normalized: number[]): 'parabolic' | 'exponential' | 'logarithmic' | 'linear' | 'oscillating' {
   if (normalized.length < 3) return 'linear';
   
-  // Calculate second derivative (curvature indicator)
-  const secondDerivatives: number[] = [];
-  for (let i = 1; i < normalized.length - 1; i++) {
-    const d2 = normalized[i + 1] - 2 * normalized[i] + normalized[i - 1];
-    secondDerivatives.push(Math.abs(d2));
+  // Convert to Point[] format for curve-detector
+  const points: Point[] = normalized.map((y, i) => ({ x: i, y }));
+  
+  // Use curve-detector.ts for pattern detection
+  const results = detectCurves(points, 0.7);
+  
+  if (results.length === 0) return 'linear';
+  
+  const bestFit = results[0];
+  
+  // Map curve-detector types to maparse patterns
+  switch (bestFit.type) {
+    case 'quadratic':
+      return 'parabolic';
+    case 'linear':
+      return 'linear';
+    default:
+      // Use heuristics for exponential/logarithmic/oscillating
+      const firstHalf = normalized.slice(0, Math.floor(normalized.length / 2));
+      const secondHalf = normalized.slice(Math.floor(normalized.length / 2));
+      
+      const firstTrend = firstHalf[firstHalf.length - 1] - firstHalf[0];
+      const secondTrend = secondHalf[secondHalf.length - 1] - secondHalf[0];
+      
+      if (firstTrend > 0 && secondTrend > firstTrend) return 'exponential';
+      if (firstTrend < 0 && secondTrend < firstTrend) return 'logarithmic';
+      if (Math.abs(firstTrend - secondTrend) > 0.3) return 'oscillating';
+      
+      return 'linear';
   }
-  
-  const avgCurvature = secondDerivatives.reduce((a, b) => a + b, 0) / secondDerivatives.length;
-  
-  // Pattern detection heuristics
-  const firstHalf = normalized.slice(0, Math.floor(normalized.length / 2));
-  const secondHalf = normalized.slice(Math.floor(normalized.length / 2));
-  
-  const firstTrend = firstHalf[firstHalf.length - 1] - firstHalf[0];
-  const secondTrend = secondHalf[secondHalf.length - 1] - secondHalf[0];
-  
-  if (avgCurvature > 0.5) {
-    if (firstTrend > 0 && secondTrend > firstTrend) return 'exponential';
-    if (firstTrend < 0 && secondTrend < firstTrend) return 'logarithmic';
-    return 'parabolic';
-  }
-  
-  if (Math.abs(firstTrend - secondTrend) > 0.3) {
-    return 'oscillating';
-  }
-  
-  return 'linear';
 }
 
 /**

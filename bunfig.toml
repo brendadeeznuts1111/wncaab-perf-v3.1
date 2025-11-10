@@ -1,7 +1,19 @@
-# bunfig.toml - Remote Index v14.2
+# bunfig.toml - BUN Macro Core v1.4 + Remote Index v14.2
 
 # Bun v1.3.2 Immunity: Explicit linker/auto config for breaking change protection
 [IMMUNITY:hoisted-disable] # Grepable: immunity-hoisted-disable
+
+[build]
+# Enable macro processing (Bun 1.4+)
+macros = true
+# External dependencies (no vendor lock-in)
+external = ["bun:fetch"]
+# Trust Cloudflare KV and Bun crypto APIs for P88-PandBet high-value feeds
+trust = ["cloudflare:kv", "bun:crypto", "bun:array", "bun:fetch"]
+
+[minify]
+# Enable syntax minification for DCE post-inlining
+syntax = true
 
 [remote]
 # Remote index URL (must be HTTPS)

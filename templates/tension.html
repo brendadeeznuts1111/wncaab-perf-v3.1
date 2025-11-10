@@ -2,88 +2,440 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tension Mapping - Edge Tempering Visualizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="theme-color" content="#212A35">
+  <meta name="color-scheme" content="light dark">
+  
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="/public/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tension Visualizer">
+  
+  <!-- Apple Touch Icon -->
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect fill='%231e3c72' width='180' height='180' rx='20'/%3E%3Ctext x='50%25' y='50%25' font-size='90' fill='%2380FF80' text-anchor='middle' dominant-baseline='middle' font-family='Arial' font-weight='bold'%3ET%3C/text%3E%3C/svg%3E">
+  
+  <!-- X-HEADER: Tension Mapping Visualizer - Custom HTTP Headers -->
+  <meta http-equiv="X-APEX-Title" content="Tension Mapping Visualizer">
+  <meta http-equiv="X-APEX-Subtitle" content="[Edge Tempering][AI-Immunity Indexing][Real-time Color Generation][[Visualizer]]">
+  <meta http-equiv="X-APEX-Domain" content="Edge Tempering">
+  <meta http-equiv="X-APEX-Scope" content="AI-Immunity Indexing">
+  <meta http-equiv="X-APEX-Meta" content="Real-time Color Generation">
+  <meta http-equiv="X-APEX-Type" content="Visualizer">
+  <meta http-equiv="X-APEX-Version" content="3.1.0">
+  <meta http-equiv="X-APEX-Component" content="tension-visualizer">
+  
+  <!-- SEO Meta Tags -->
+  <title>Tension Mapping Visualizer - Edge Tempering & AI-Immunity Indexing</title>
+  <meta name="description" content="Real-time color generation visualizer for conflict, entropy, and tension mapping. Interactive node graph with dynamic edge visualization and macro-compliant color output.">
+  <meta name="keywords" content="tension mapping, edge tempering, color visualization, conflict entropy, node graph, AI-immunity indexing">
+  <meta name="author" content="Production Apex">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="http://localhost:3002/tension">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="http://localhost:3002/tension">
+  <meta property="og:title" content="Tension Mapping Visualizer - Edge Tempering">
+  <meta property="og:description" content="Real-time color generation visualizer for conflict, entropy, and tension mapping with interactive node graph.">
+  <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='630'%3E%3Crect fill='%231e3c72' width='1200' height='630'/%3E%3Ctext x='50%25' y='50%25' font-size='48' fill='white' text-anchor='middle' dominant-baseline='middle' font-family='Arial'%3ETension Mapping Visualizer%3C/text%3E%3C/svg%3E">
+  
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="http://localhost:3002/tension">
+  <meta name="twitter:title" content="Tension Mapping Visualizer - Edge Tempering">
+  <meta name="twitter:description" content="Real-time color generation visualizer for conflict, entropy, and tension mapping.">
+  
+  <!-- Performance & Security -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:;">
+  <link rel="dns-prefetch" href="//localhost">
+  <link rel="preconnect" href="http://localhost:3002">
+  
+  <!-- Favicon & Icons -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%A8%3C/text%3E%3C/svg%3E">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%231e3c72' width='100' height='100' rx='20'/%3E%3Ctext y='.9em' font-size='90' fill='white' text-anchor='middle' x='50%25'%3E%F0%9F%8E%A8%3C/text%3E%3C/svg%3E">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.6; }
+    }
     :root {
       --tension-hex: #80FF80;
       --tension-opacity: 1.0;
       --tension-width: 1px;
+      
+      /* Header Component Variables - Bun-compliant CSS variables */
+      --header-primary-color: #14A4B8;
+      --header-secondary-color: #3CB85E;
+      --header-subtitle-color: hsl(210, 15%, 65%);
+      --header-subtitle-bracket-color: hsl(210, 20%, 75%);
+      --header-border-color: rgba(20, 164, 184, 0.15);
+      --header-accent-gradient: linear-gradient(135deg, #14A4B8 0%, #3CB85E 100%);
+      
+      /* Presets Component Variables - Bun-compliant CSS variables */
+      --presets-bg-gradient: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+      --presets-border-color: rgba(20, 164, 184, 0.2);
+      --presets-title-color: #14A4B8;
+      --presets-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      
+      /* Controls Component Variables - Bun-compliant CSS variables */
+      --controls-bg-gradient: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      --controls-border-color: #dee2e6;
+      --control-group-bg: white;
+      --control-group-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      --control-label-color: #1e3c72;
+      --slider-track-gradient: linear-gradient(to inline-end, #667eea, #764ba2);
+      --lock-btn-bg: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+      --lock-btn-locked-bg: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+      --lock-btn-locked-shadow: 0 2px 8px rgba(255, 107, 107, 0.4);
+    }
+    
+    /* Dark theme variables (Bun-compliant prefers-color-scheme) */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --header-subtitle-color: hsl(210, 20%, 75%);
+        --header-subtitle-bracket-color: hsl(210, 25%, 80%);
+        --header-border-color: rgba(20, 164, 184, 0.25);
+        --presets-border-color: rgba(20, 164, 184, 0.3);
+        --controls-bg-gradient: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+        --controls-border-color: rgba(20, 164, 184, 0.2);
+        --control-group-bg: rgba(33, 42, 53, 0.8);
+        --control-label-color: hsl(210, 20%, 85%);
+      }
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #0a1929 0%, #1e3c72 50%, #2a5298 100%);
-      color: #fff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, hsl(215, 15%, 12%) 0%, hsl(215, 15%, 15%) 50%, hsl(215, 18%, 18%) 100%);
+      color: hsl(210, 20%, 85%);
       padding: 20px;
       min-height: 100vh;
+      position: relative;
     }
+    
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: 
+        radial-gradient(circle at 20% 50%, hsla(190, 80%, 40%, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 80% 50%, hsla(140, 60%, 45%, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    
     .container {
       max-width: 1600px;
       margin: 0 auto;
-      background: rgba(255, 255, 255, 0.98);
-      border-radius: 20px;
-      padding: 50px;
-      box-shadow: 0 30px 80px rgba(0,0,0,0.5);
-      color: #333;
+      background: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+      border-radius: 24px;
+      padding: 60px 50px;
+      box-shadow: 
+        0 20px 60px rgba(0, 0, 0, 0.5),
+        0 0 0 1px rgba(20, 164, 184, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      color: hsl(210, 20%, 85%);
+      position: relative;
+      z-index: 1;
     }
-    h1 {
-      color: #1e3c72;
-      margin-bottom: 15px;
-      font-size: 3.5em;
+    
+    /* ========================================
+       HEADER COMPONENT
+       Bun-compliant: Uses logical properties, CSS variables, modern features
+       ======================================== */
+    
+    .header-section {
+      /* Logical properties for RTL/LTR support (Bun compiles to physical) */
       text-align: center;
-      font-weight: 800;
-      text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+      margin-block-end: 50px;
+      padding-block-end: 40px;
+      border-block-end: 2px solid var(--header-border-color);
+      position: relative;
     }
-    .subtitle {
-      color: #555;
-      margin-bottom: 40px;
-      font-size: 1.4em;
-      text-align: center;
+    
+    .header-section::after {
+      content: '';
+      position: absolute;
+      inset-block-end: -2px;
+      inset-inline-start: 50%;
+      transform: translateX(-50%);
+      inline-size: 120px;
+      block-size: 2px;
+      background: linear-gradient(to inline-end, transparent, var(--header-primary-color), transparent);
+      animation: pulse 3s ease-in-out infinite;
+    }
+    
+    .header-title {
+      color: var(--header-primary-color);
+      margin: 0 0 12px 0;
+      font-size: clamp(2.5em, 5vw, 4em);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      text-shadow: 
+        0 0 20px hsla(190, 80%, 40%, 0.3),
+        0 4px 12px rgba(0, 0, 0, 0.4),
+        0 2px 4px rgba(0, 0, 0, 0.3);
+      background: var(--header-accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+      animation: fadeIn 0.8s ease-out;
+    }
+    
+    .header-subtitle {
+      color: var(--header-subtitle-color);
+      margin: 0;
+      font-size: clamp(1.1em, 2vw, 1.5em);
       font-weight: 500;
+      letter-spacing: 0.01em;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      opacity: 0.9;
+      animation: fadeIn 0.8s ease-out 0.2s both;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
     }
+    
+    .header-subtitle-bracket {
+      color: var(--header-subtitle-bracket-color);
+      font-weight: 600;
+      /* Logical spacing for RTL support */
+      margin-inline-end: 0.25em;
+    }
+    
+    /* RTL/LTR support using :dir() selector (Bun compiles automatically) */
+    .header-section:dir(rtl) {
+      text-align: right;
+    }
+    
+    .header-section:dir(ltr) {
+      text-align: left;
+    }
+    
+    /* Center alignment for both directions */
+    .header-section {
+      text-align: center;
+    }
+    
+    .header-subtitle-bracket:dir(rtl) {
+      margin-inline-start: 0.25em;
+      margin-inline-end: 0;
+    }
+    
+    .header-subtitle-bracket:dir(rtl):last-child {
+      margin-inline-start: 0;
+    }
+    
+    /* Dark theme support (Bun-compliant prefers-color-scheme) */
+    @media (prefers-color-scheme: dark) {
+      .header-section {
+        border-block-end-color: var(--header-border-color);
+      }
+      
+      .header-subtitle {
+        color: var(--header-subtitle-color);
+      }
+      
+      .header-subtitle-bracket {
+        color: var(--header-subtitle-bracket-color);
+      }
+    }
+    
+    /* Legacy h1 selector for backward compatibility */
+    .header-section h1 {
+      color: var(--header-primary-color);
+      margin-block-end: 12px;
+      font-size: clamp(2.5em, 5vw, 4em);
+      font-weight: 900;
+      letter-spacing: -0.03em;
+      text-shadow: 
+        0 0 20px hsla(190, 80%, 40%, 0.3),
+        0 4px 12px rgba(0, 0, 0, 0.4),
+        0 2px 4px rgba(0, 0, 0, 0.3);
+      background: var(--header-accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+      animation: fadeIn 0.8s ease-out;
+    }
+    
+    /* Legacy .subtitle selector for backward compatibility */
+    .subtitle {
+      color: var(--header-subtitle-color);
+      margin-block-end: 0;
+      font-size: clamp(1.1em, 2vw, 1.5em);
+      font-weight: 500;
+      letter-spacing: 0.01em;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      opacity: 0.9;
+      animation: fadeIn 0.8s ease-out 0.2s both;
+    }
+    /* ========================================
+       CONTROLS COMPONENT
+       Bun-compliant: Uses logical properties, CSS variables, modern features
+       ======================================== */
+    
     .controls {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
       gap: 40px;
-      margin-bottom: 50px;
+      margin-block-end: 50px;
       padding: 40px;
-      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      background: var(--controls-bg-gradient);
       border-radius: 16px;
-      border: 2px solid #dee2e6;
+      border: 2px solid var(--controls-border-color);
+      /* Logical properties for RTL support */
+      transition: all 0.3s ease;
     }
+    
+    .controls:hover {
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+    
     .control-group {
       display: flex;
       flex-direction: column;
       gap: 15px;
       padding: 20px;
-      background: white;
+      background: var(--control-group-bg);
       border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      box-shadow: var(--control-group-shadow);
+      /* Logical properties for RTL support */
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    
+    .control-group:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
+    
     .control-group label {
       font-weight: 700;
-      color: #1e3c72;
+      color: var(--control-label-color);
       font-size: 1.3em;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      /* Logical properties for RTL support */
+      margin-block-end: 0;
     }
+    
     .slider-container {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 12px;
+      position: relative;
+      /* Logical properties for RTL support */
+      margin-block-start: 8px;
+    }
+    .lock-btn {
+      inline-size: 36px;
+      block-size: 36px;
+      border: none;
+      border-radius: 8px;
+      background: var(--lock-btn-bg);
+      color: #6c757d;
+      font-size: 1.2em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      flex-shrink: 0;
+      /* Logical properties for RTL support */
+      margin-inline-end: 8px;
+    }
+    
+    .lock-btn:hover {
+      background: linear-gradient(135deg, #dee2e6 0%, #ced4da 100%);
+      transform: scale(1.1);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .lock-btn:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(20, 164, 184, 0.3), 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    .lock-btn.locked {
+      background: var(--lock-btn-locked-bg);
+      color: white;
+      box-shadow: var(--lock-btn-locked-shadow);
+    }
+    
+    .lock-btn.locked:hover {
+      background: linear-gradient(135deg, #ee5a6f 0%, #dc3545 100%);
+      box-shadow: 0 4px 12px rgba(255, 107, 107, 0.6);
+    }
+    
+    input[type="range"] {
+      flex: 1;
+      block-size: 12px;
+      border-radius: 6px;
+      background: var(--slider-track-gradient);
+      outline: none;
+      -webkit-appearance: none;
+      appearance: none;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+      /* Logical properties for RTL support */
+      margin-inline: 0;
+    }
+    
+    input[type="range"]:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      background: linear-gradient(to inline-end, #adb5bd, #ced4da);
+    }
+    input[type="range"]:disabled::-webkit-slider-thumb {
+      cursor: not-allowed;
+      background: #adb5bd;
+      border-color: #6c757d;
+    }
+    input[type="range"]:disabled::-moz-range-thumb {
+      cursor: not-allowed;
+      background: #adb5bd;
+      border-color: #6c757d;
+    }
+    .control-group.locked {
+      /* Logical properties for RTL support */
+      border-inline-start: 4px solid #ff6b6b;
+      background: linear-gradient(to inline-end, rgba(255, 107, 107, 0.05), var(--control-group-bg));
+    }
+    
+    /* RTL/LTR support for controls */
+    .controls:dir(rtl) {
+      direction: rtl;
+    }
+    
+    .controls:dir(ltr) {
+      direction: ltr;
     }
     input[type="range"] {
       flex: 1;
-      height: 12px;
+      block-size: 12px;
       border-radius: 6px;
-      background: linear-gradient(to right, #667eea, #764ba2);
+      background: var(--slider-track-gradient);
       outline: none;
       -webkit-appearance: none;
+      appearance: none;
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+      /* Logical properties for RTL support */
+      margin-inline: 0;
     }
+    
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
@@ -218,61 +570,133 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     .hex-display { 
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
       align-items: center;
-      justify-content: center;
-      gap: 15px;
-      padding: 25px;
-      background: white;
-      border-radius: 12px;
-      border: 3px solid currentColor;
-      font-family: 'Courier New', monospace;
-      font-weight: 900;
-      font-size: 1.4em;
-      letter-spacing: 2px;
-      transition: all 0.3s ease;
+      gap: 20px;
+      padding: 30px;
+      background: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+      border-radius: 16px;
+      border: 2px solid rgba(20, 164, 184, 0.3);
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', 'Courier New', monospace;
+      font-weight: 700;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       cursor: pointer;
       position: relative;
+      overflow: hidden;
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
+    
+    .hex-display::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(20, 164, 184, 0.1), transparent);
+      transform: skewX(-20deg);
+      transition: left 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    
+    .hex-display:hover::before {
+      left: 100%;
+    }
+    
     .hex-display:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+      transform: translateY(-3px);
+      border-color: rgba(20, 164, 184, 0.5);
+      box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.4),
+        0 0 0 3px rgba(20, 164, 184, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
+    
     .hex-display::after {
       content: '📋';
       position: absolute;
-      right: 15px;
+      right: 20px;
       opacity: 0;
       transition: opacity 0.3s ease;
-      font-size: 1.2em;
+      font-size: 1.3em;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
     }
+    
     .hex-display:hover::after {
-      opacity: 0.5;
+      opacity: 0.8;
     }
+    
     .hex-display .label {
-      font-size: 0.75em;
-      opacity: 0.6;
+      font-size: 0.7em;
+      opacity: 0.7;
       text-transform: uppercase;
-      letter-spacing: 3px;
-      color: #666;
+      letter-spacing: 4px;
+      color: hsl(210, 15%, 65%);
+      font-weight: 600;
     }
+    
+    .hex-values-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
     .hex-display .value {
-      font-size: 1.8em;
+      font-size: 1.6em;
       letter-spacing: 3px;
+      font-weight: 800;
+      color: hsl(210, 20%, 85%);
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .hex-display .value.hex-lowercase {
+      font-size: 1.4em;
+      opacity: 0.85;
+      color: hsl(210, 15%, 70%);
+    }
+    
+    .hex-display .value.hex-uppercase {
+      font-size: 1.8em;
       font-weight: 900;
+      background: linear-gradient(135deg, #14A4B8 0%, #3CB85E 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
+    
     .hex-display .swatch {
-      width: 50px;
-      height: 50px;
-      border-radius: 8px;
-      border: 3px solid #333;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      flex-shrink: 0;
+      width: 60px;
+      height: 60px;
+      border-radius: 12px;
+      border: 3px solid rgba(20, 164, 184, 0.4);
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        inset 0 0 0 2px rgba(255, 255, 255, 0.1);
       transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
     }
+    
+    .hex-display .swatch::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 100%);
+      pointer-events: none;
+    }
+    
     .hex-display .swatch:hover {
-      transform: scale(1.1);
-      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      transform: scale(1.1) rotate(5deg);
+      border-color: rgba(20, 164, 184, 0.6);
+      box-shadow: 
+        0 6px 20px rgba(0, 0, 0, 0.4),
+        0 0 0 4px rgba(20, 164, 184, 0.2),
+        inset 0 0 0 2px rgba(255, 255, 255, 0.15);
     }
     .hsl-display { 
       display: flex;
@@ -398,15 +822,155 @@
       color: #1e3c72;
       font-weight: 700;
     }
+    .graph-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .graph-control-btn {
+      padding: 8px 12px;
+      background: linear-gradient(135deg, #667EEA 0%, #764BA2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      user-select: none;
+    }
+    .graph-control-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+    .graph-control-btn:active {
+      transform: translateY(0);
+    }
+    .graph-control-btn.active {
+      background: linear-gradient(135deg, #764BA2 0%, #667EEA 100%);
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.3);
+    }
     .node-graph {
       position: relative;
       width: 100%;
       height: 500px;
-      background: linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+      background: 
+        radial-gradient(circle at 20% 50%, rgba(102, 126, 234, 0.1) 0%, transparent 50%),
+        radial-gradient(circle at 80% 50%, rgba(118, 75, 162, 0.1) 0%, transparent 50%),
+        linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
       border-radius: 12px;
       border: 4px solid #333;
       box-shadow: inset 0 2px 8px rgba(0,0,0,0.1), 0 4px 12px rgba(0,0,0,0.05);
       overflow: hidden;
+      cursor: grab;
+      position: relative;
+    }
+    .node-graph:active {
+      cursor: grabbing;
+    }
+    .node-graph::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 2px,
+          rgba(102, 126, 234, 0.03) 2px,
+          rgba(102, 126, 234, 0.03) 4px
+        ),
+        repeating-linear-gradient(
+          90deg,
+          transparent,
+          transparent 2px,
+          rgba(118, 75, 162, 0.03) 2px,
+          rgba(118, 75, 162, 0.03) 4px
+        );
+      pointer-events: none;
+      z-index: 0;
+    }
+    .node-graph svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+    .node-graph svg circle {
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+    }
+    .node-graph svg circle:hover {
+      transform: scale(1.15);
+      filter: brightness(1.2) drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+      animation: nodePulse 1.5s ease-in-out infinite;
+    }
+    @keyframes nodePulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    @keyframes helixRotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes dnaStrand {
+      0% { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: 20; }
+    }
+    @keyframes particleFloat {
+      0% { transform: translateY(0) rotate(0deg); opacity: 0.8; }
+      100% { transform: translateY(-100px) rotate(360deg); opacity: 0; }
+    }
+    .dna-strand {
+      stroke-dasharray: 5, 5;
+      animation: dnaStrand 2s linear infinite;
+    }
+    .particle {
+      animation: particleFloat 3s ease-out infinite;
+    }
+    .node-graph svg line {
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .node-graph svg text {
+      pointer-events: none;
+      user-select: none;
+    }
+    .graph-legend {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      background: rgba(255, 255, 255, 0.95);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      font-size: 0.85em;
+      z-index: 10;
+    }
+    .graph-legend h4 {
+      margin: 0 0 10px 0;
+      color: #1e3c72;
+      font-size: 1em;
+    }
+    .graph-legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 5px 0;
+    }
+    .graph-legend-color {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 2px solid #333;
     }
     .node {
       position: absolute;
@@ -431,45 +995,73 @@
     }
     .meta-info {
       padding: 40px;
-      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-      border-radius: 16px;
+      background: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+      border-radius: 20px;
       margin-top: 40px;
-      border: 3px solid #dee2e6;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+      border: 2px solid rgba(20, 164, 184, 0.2);
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
+    
     .meta-info h3 {
-      margin-bottom: 25px;
-      color: #1e3c72;
+      margin-bottom: 30px;
+      color: #14A4B8;
       font-size: 1.8em;
-      font-weight: 700;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
     }
+    
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 20px;
     }
+    
     .meta-item {
       padding: 25px;
-      background: white;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
       border-radius: 12px;
-      border-left: 6px solid #667eea;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-      transition: all 0.3s ease;
+      border-left: 4px solid rgba(20, 164, 184, 0.5);
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
+    
     .meta-item:hover {
-      transform: translateY(-3px);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.15);
-      border-left-width: 8px;
+      transform: translateY(-2px);
+      border-left-color: rgba(20, 164, 184, 0.8);
+      box-shadow: 
+        0 6px 20px rgba(0, 0, 0, 0.3),
+        0 0 0 2px rgba(20, 164, 184, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
+    
     .meta-item strong {
       display: block;
-      color: #667eea;
-      margin-bottom: 10px;
-      font-size: 1.1em;
-      font-weight: 700;
+      color: hsl(210, 20%, 85%);
+      font-size: 0.85em;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      font-size: 0.9em;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      font-weight: 700;
+      opacity: 0.9;
+    }
+    
+    .meta-item div {
+      color: hsl(210, 15%, 70%);
+      font-size: 1em;
+      line-height: 1.6;
+      font-weight: 500;
+    }
+    
+    .meta-bracket {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', 'Courier New', monospace;
+      color: hsl(210, 20%, 85%);
+      font-weight: 600;
+      letter-spacing: 0.05em;
     }
     .relation-badge {
       display: inline-block;
@@ -539,12 +1131,155 @@
       transform: translateY(-4px) scale(1.05);
       box-shadow: 0 8px 25px rgba(108, 117, 125, 0.5);
     }
+    .presets-section {
+      margin-bottom: 30px;
+      padding: 30px;
+      background: linear-gradient(135deg, rgba(33, 42, 53, 0.95) 0%, rgba(20, 26, 35, 0.98) 100%);
+      border-radius: 16px;
+      border: 2px solid rgba(20, 164, 184, 0.2);
+      box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    
+    .presets-section h3 {
+      margin: 0 0 20px 0;
+      color: #14A4B8;
+      font-size: 1.4em;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .preset-buttons {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+    
+    .preset-btn {
+      padding: 16px 20px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1em;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      color: white;
+      box-shadow: 
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        0 2px 4px rgba(0, 0, 0, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    
+    .preset-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transform: skewX(-20deg);
+      transition: left 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    
+    .preset-btn:hover::before {
+      left: 100%;
+    }
+    
+    .preset-btn:hover {
+      transform: translateY(-3px) scale(1.03);
+      box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.4),
+        0 4px 8px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+    
+    .preset-btn:active {
+      transform: translateY(-1px) scale(1.01);
+      box-shadow: 
+        0 2px 8px rgba(0, 0, 0, 0.3),
+        inset 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+    
+    .preset-btn-label {
+      font-size: 1.1em;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    
+    .preset-btn-values {
+      font-size: 0.75em;
+      font-weight: 500;
+      opacity: 0.85;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', 'Courier New', monospace;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+    
+    .preset-btn-tooltip {
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%) translateY(-8px);
+      background: rgba(0, 0, 0, 0.9);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.8em;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease, transform 0.3s ease;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Monaco', 'Courier New', monospace;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+    }
+    
+    .preset-btn-tooltip::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 6px solid transparent;
+      border-top-color: rgba(0, 0, 0, 0.9);
+    }
+    
+    .preset-btn:hover .preset-btn-tooltip {
+      opacity: 1;
+      transform: translateX(-50%) translateY(-12px);
+    }
+    .rgb-display:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(111, 66, 193, 0.2);
+    }
     @media (max-width: 768px) {
       .container {
         padding: 20px;
       }
-      h1 {
-        font-size: 2em;
+      .header-title,
+      .header-section h1 {
+        font-size: clamp(2em, 4vw, 2.5em);
+      }
+      
+      .header-subtitle,
+      .subtitle {
+        font-size: clamp(0.95em, 2vw, 1.1em);
+      }
+      
+      .header-section {
+        margin-block-end: 30px;
+        padding-block-end: 30px;
       }
       .visualization {
         grid-template-columns: 1fr;
@@ -556,54 +1291,264 @@
       .controls {
         grid-template-columns: 1fr;
         padding: 20px;
+        /* Logical properties for mobile */
+        margin-block-end: 30px;
       }
       .meta-grid {
         grid-template-columns: 1fr;
       }
     }
+  </style>
 </head>
 <body>
   <div class="container">
-    <h1>🎨 Tension Mapping Visualizer</h1>
-    <p class="subtitle">Edge Tempering + AI-Immunity Indexing - Real-time Color Generation</p>
+    <!-- HEADER_COMPONENT: Tension Mapping Visualizer Header
+         Bun-compliant: Semantic HTML5, ARIA, logical properties, RTL support -->
+    <header 
+      class="header-section" 
+      role="banner" 
+      aria-label="Tension Mapping Visualizer Header"
+      dir="auto"
+    >
+      <!-- HEADER_TITLE: Main application title -->
+      <h1 class="header-title" id="header-title" aria-label="Tension Mapping Visualizer">
+        🎨 Tension Mapping Visualizer
+      </h1>
+      
+      <!-- HEADER_SUBTITLE: Bracket-formatted metadata subtitle
+           Format: [DOMAIN][SCOPE][META][[TYPE]]
+           Bun-compliant: Semantic structure, data attributes for grepability -->
+      <p 
+        class="header-subtitle subtitle" 
+        id="header-subtitle"
+        data-subtitle-text="[Edge Tempering][AI-Immunity Indexing][Real-time Color Generation][[Visualizer]]"
+        data-domain="Edge Tempering"
+        data-scope="AI-Immunity Indexing"
+        data-meta="Real-time Color Generation"
+        data-type="Visualizer"
+        aria-label="Application metadata: Edge Tempering, AI-Immunity Indexing, Real-time Color Generation, Visualizer"
+      >
+        <span class="header-subtitle-bracket" aria-hidden="true">[Edge Tempering]</span>
+        <span class="header-subtitle-bracket" aria-hidden="true">[AI-Immunity Indexing]</span>
+        <span class="header-subtitle-bracket" aria-hidden="true">[Real-time Color Generation]</span>
+        <span class="header-subtitle-bracket" aria-hidden="true">[[Visualizer]]</span>
+      </p>
+    </header>
     
-    <div class="controls">
-      <div class="control-group">
-        <label>Conflict: <span id="conflict-value">1.0</span></label>
+    <!-- PRESETS_COMPONENT: Quick Preset Buttons
+         Bun-compliant: Semantic HTML5, ARIA, logical properties, RTL support -->
+    <section 
+      class="presets-section" 
+      role="region" 
+      aria-label="Quick Presets"
+      dir="auto"
+    >
+      <h3>⚡ Quick Presets</h3>
+      <div class="preset-buttons" role="group" aria-label="Preset configuration buttons">
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(1.000000000, 0.000000000, 0.000000000)" 
+          style="background: linear-gradient(135deg, #3CB85E 0%, #28a745 100%);"
+          aria-label="Load TEMPERATE preset: Conflict 1.0, Entropy 0.0, Tension 0.0"
+          data-preset-type="temperate"
+          data-conflict="1.000000000"
+          data-entropy="0.000000000"
+          data-tension="0.000000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:1.000000000 E:0.000000000 T:0.000000000</span>
+          <span class="preset-btn-label">🟢 TEMPERATE</span>
+          <span class="preset-btn-values">1.0 / 0.0 / 0.0</span>
+        </button>
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(0.500000000, 0.300000000, 0.400000000)" 
+          style="background: linear-gradient(135deg, #FF8C1A 0%, #ff9800 100%);"
+          aria-label="Load MODERATE preset: Conflict 0.5, Entropy 0.3, Tension 0.4"
+          data-preset-type="moderate"
+          data-conflict="0.500000000"
+          data-entropy="0.300000000"
+          data-tension="0.400000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:0.500000000 E:0.300000000 T:0.400000000</span>
+          <span class="preset-btn-label">🟠 MODERATE</span>
+          <span class="preset-btn-values">0.5 / 0.3 / 0.4</span>
+        </button>
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(0.700000000, 0.500000000, 0.600000000)" 
+          style="background: linear-gradient(135deg, #fd7e14 0%, #ff5722 100%);"
+          aria-label="Load INTENSE preset: Conflict 0.7, Entropy 0.5, Tension 0.6"
+          data-preset-type="intense"
+          data-conflict="0.700000000"
+          data-entropy="0.500000000"
+          data-tension="0.600000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:0.700000000 E:0.500000000 T:0.600000000</span>
+          <span class="preset-btn-label">🟠 INTENSE</span>
+          <span class="preset-btn-values">0.7 / 0.5 / 0.6</span>
+        </button>
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(1.000000000, 1.000000000, 1.000000000)" 
+          style="background: linear-gradient(135deg, #E64A4A 0%, #dc3545 100%);"
+          aria-label="Load EXTREME preset: Conflict 1.0, Entropy 1.0, Tension 1.0"
+          data-preset-type="extreme"
+          data-conflict="1.000000000"
+          data-entropy="1.000000000"
+          data-tension="1.000000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:1.000000000 E:1.000000000 T:1.000000000</span>
+          <span class="preset-btn-label">🔴 EXTREME</span>
+          <span class="preset-btn-values">1.0 / 1.0 / 1.0</span>
+        </button>
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(0.000000000, 0.000000000, 0.000000000)" 
+          style="background: linear-gradient(135deg, #5E6C7D 0%, #6c757d 100%);"
+          aria-label="Load MINIMAL preset: Conflict 0.0, Entropy 0.0, Tension 0.0"
+          data-preset-type="minimal"
+          data-conflict="0.000000000"
+          data-entropy="0.000000000"
+          data-tension="0.000000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:0.000000000 E:0.000000000 T:0.000000000</span>
+          <span class="preset-btn-label">⚪ MINIMAL</span>
+          <span class="preset-btn-values">0.0 / 0.0 / 0.0</span>
+        </button>
+        <button 
+          class="preset-btn" 
+          onclick="loadPreset(0.500000000, 0.500000000, 0.500000000)" 
+          style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+          aria-label="Load BALANCED preset: Conflict 0.5, Entropy 0.5, Tension 0.5"
+          data-preset-type="balanced"
+          data-conflict="0.500000000"
+          data-entropy="0.500000000"
+          data-tension="0.500000000"
+        >
+          <span class="preset-btn-tooltip" aria-hidden="true">C:0.500000000 E:0.500000000 T:0.500000000</span>
+          <span class="preset-btn-label">🎨 BALANCED</span>
+          <span class="preset-btn-values">0.5 / 0.5 / 0.5</span>
+        </button>
+      </div>
+    </section>
+    
+    <!-- CONTROLS_COMPONENT: Interactive Sliders
+         Bun-compliant: Semantic HTML5, ARIA, logical properties, RTL support -->
+    <section 
+      class="controls" 
+      role="region" 
+      aria-label="Tension Mapping Controls"
+      dir="auto"
+    >
+      <div class="control-group" id="conflict-control-group" role="group" aria-label="Conflict control">
+        <label for="conflict-slider">
+          Conflict: <span id="conflict-value" aria-live="polite">1.0</span>
+        </label>
         <div class="slider-container">
-          <input type="range" id="conflict-slider" min="0" max="100" value="100" step="1">
-          <span class="value-display" id="conflict-display">1.0</span>
+          <button 
+            class="lock-btn" 
+            id="conflict-lock" 
+            onclick="toggleLock('conflict')" 
+            title="Lock/Unlock Conflict slider"
+            aria-label="Lock or unlock Conflict slider"
+            aria-pressed="false"
+          >🔓</button>
+          <input 
+            type="range" 
+            id="conflict-slider" 
+            min="0" 
+            max="1000000000" 
+            value="1000000000" 
+            step="1"
+            aria-label="Conflict slider"
+            aria-valuemin="0"
+            aria-valuemax="1"
+            aria-valuenow="1"
+            aria-valuetext="1.0"
+          >
+          <span class="value-display" id="conflict-display" aria-hidden="true">1.0</span>
         </div>
       </div>
-      <div class="control-group">
-        <label>Entropy: <span id="entropy-value">0.0</span></label>
+      <div class="control-group" id="entropy-control-group" role="group" aria-label="Entropy control">
+        <label for="entropy-slider">
+          Entropy: <span id="entropy-value" aria-live="polite">0.0</span>
+        </label>
         <div class="slider-container">
-          <input type="range" id="entropy-slider" min="0" max="100" value="0" step="1">
-          <span class="value-display" id="entropy-display">0.0</span>
+          <button 
+            class="lock-btn" 
+            id="entropy-lock" 
+            onclick="toggleLock('entropy')" 
+            title="Lock/Unlock Entropy slider"
+            aria-label="Lock or unlock Entropy slider"
+            aria-pressed="false"
+          >🔓</button>
+          <input 
+            type="range" 
+            id="entropy-slider" 
+            min="0" 
+            max="1000000000" 
+            value="0" 
+            step="1"
+            aria-label="Entropy slider"
+            aria-valuemin="0"
+            aria-valuemax="1"
+            aria-valuenow="0"
+            aria-valuetext="0.0"
+          >
+          <span class="value-display" id="entropy-display" aria-hidden="true">0.0</span>
         </div>
       </div>
-      <div class="control-group">
-        <label>Tension: <span id="tension-value">0.0</span></label>
+      <div class="control-group" id="tension-control-group" role="group" aria-label="Tension control">
+        <label for="tension-slider">
+          Tension: <span id="tension-value" aria-live="polite">0.0</span>
+        </label>
         <div class="slider-container">
-          <input type="range" id="tension-slider" min="0" max="100" value="0" step="1">
-          <span class="value-display" id="tension-display">0.0</span>
+          <button 
+            class="lock-btn" 
+            id="tension-lock" 
+            onclick="toggleLock('tension')" 
+            title="Lock/Unlock Tension slider"
+            aria-label="Lock or unlock Tension slider"
+            aria-pressed="false"
+          >🔓</button>
+          <input 
+            type="range" 
+            id="tension-slider" 
+            min="0" 
+            max="1000000000" 
+            value="0" 
+            step="1"
+            aria-label="Tension slider"
+            aria-valuemin="0"
+            aria-valuemax="1"
+            aria-valuenow="0"
+            aria-valuetext="0.0"
+          >
+          <span class="value-display" id="tension-display" aria-hidden="true">0.0</span>
         </div>
       </div>
-    </div>
+    </section>
     
     <div class="visualization">
       <div class="color-display">
-        <h3 style="margin-bottom: 20px; color: #333;">Color Output</h3>
+        <h3 style="margin-bottom: 25px; color: #14A4B8; font-size: 1.6em; font-weight: 800; letter-spacing: -0.02em; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);">Color Output</h3>
         <div class="color-swatch" id="color-swatch" style="background: #80FF80;" onclick="copyHexToClipboard()"></div>
         <div class="color-info">
-          <div class="hex-display" id="hex-display" style="border-color: #80FF80;" onclick="copyHexToClipboard()">
+          <div class="hex-display" id="hex-display" onclick="copyHexToClipboard()">
             <span class="label">HEX</span>
-            <span class="value" id="hex-value" style="color: #80FF80;">#80FF80</span>
-            <span class="swatch" style="background: #80FF80;"></span>
+            <div class="hex-values-group">
+              <span class="value hex-lowercase" id="hex-value-lowercase">#80ff80</span>
+              <span class="value hex-uppercase" id="hex-value-uppercase">#80FF80</span>
+            </div>
+            <span class="swatch" id="hex-swatch" style="background: #80FF80;"></span>
           </div>
           <div class="hsl-display" id="hsl-display">
             <span class="label">HSL</span>
             <span class="value">hsl(120, 100%, 75%)</span>
+          </div>
+          <div class="rgb-display" id="rgb-display" style="display: flex; align-items: center; justify-content: center; gap: 15px; padding: 20px; background: white; border-radius: 12px; border: 3px solid #6f42c1; font-family: 'Courier New', monospace; font-weight: 700; font-size: 1.4em; color: #6f42c1; transition: all 0.3s ease; cursor: pointer;" onclick="copyRGBToClipboard()">
+            <span class="label" style="font-size: 0.75em; opacity: 0.6; text-transform: uppercase; letter-spacing: 3px; color: #666;">RGB</span>
+            <span class="value" id="rgb-value">rgb(128, 255, 128)</span>
           </div>
           <div class="opacity-display" id="opacity-display">
             <span class="label">OPACITY</span>
@@ -624,12 +1569,44 @@
       
       <div class="graph-container">
         <h3 class="graph-title">Node Graph Visualization</h3>
+        <div class="graph-controls">
+          <button id="zoom-in" class="graph-control-btn" title="Zoom In">🔍+</button>
+          <button id="zoom-out" class="graph-control-btn" title="Zoom Out">🔍-</button>
+          <button id="reset-view" class="graph-control-btn" title="Reset View">↺</button>
+          <button id="toggle-particles" class="graph-control-btn active" title="Toggle Particles">✨</button>
+        </div>
         <div class="node-graph" id="node-graph">
+          <div class="graph-legend" id="graph-legend">
+            <h4>📊 Legend</h4>
+            <div class="graph-legend-item">
+              <div class="graph-legend-color" style="background: #667EEA;"></div>
+              <span>Node A (Source)</span>
+            </div>
+            <div class="graph-legend-item">
+              <div class="graph-legend-color" style="background: #764BA2;"></div>
+              <span>Node B (Target)</span>
+            </div>
+            <div class="graph-legend-item">
+              <div class="graph-legend-color" id="legend-tension-color" style="background: #80FF80;"></div>
+              <span>Node C (Tension)</span>
+            </div>
+            <div class="graph-legend-item" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #dee2e6;">
+              <div style="width: 30px; height: 2px; background: currentColor;" id="legend-edge-sample"></div>
+              <span>Edges (Dynamic)</span>
+            </div>
+          </div>
           <svg width="100%" height="100%" style="position: absolute; top: 0; left: 0;">
             <defs>
               <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
                 <polygon points="0 0, 10 3, 0 6" fill="currentColor" />
               </marker>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
             </defs>
           </svg>
         </div>
@@ -637,19 +1614,28 @@
     </div>
     
     <div class="meta-info">
-      <h3>Metadata & Relation</h3>
+      <!-- METADATA_SECTION: [Edge Tempering][AI-Immunity Indexing][Real-time Color Generation][[Metadata]] -->
+      <h3>[Metadata] & [Relation]</h3>
       <div class="meta-grid">
-        <div class="meta-item">
-          <strong>Relation Type</strong>
-          <span class="relation-badge relation-temperate" id="relation-badge">temperate</span>
+        <div class="meta-item" data-domain="Edge Tempering" data-scope="Relation Type">
+          <strong>[Relation Type]</strong>
+          <span class="relation-badge relation-temperate meta-bracket" id="relation-badge">[TEMPERATE]</span>
         </div>
-        <div class="meta-item">
-          <strong>Visual Note</strong>
-          <div id="visual-note">Green thin edges - maximal conflict visibility, zero entropy dispersion</div>
+        <div class="meta-item" data-domain="Edge Tempering" data-scope="Visual Note" data-meta="Real-time Color Generation">
+          <strong>[Visual Note]</strong>
+          <div id="visual-note" class="meta-bracket">Green thin edges - maximal conflict visibility, zero entropy dispersion</div>
         </div>
-        <div class="meta-item">
-          <strong>Absorbed By</strong>
-          <div id="absorbed-by">cli-mapper</div>
+        <div class="meta-item" data-domain="Edge Tempering" data-scope="Absorbed By">
+          <strong>[Absorbed By]</strong>
+          <div id="absorbed-by" class="meta-bracket">[cli-mapper]</div>
+        </div>
+        <div class="meta-item" data-domain="System" data-scope="API Version">
+          <strong>[API Version]</strong>
+          <div id="api-version" class="meta-bracket" style="color: #FF5000; font-weight: 700;" data-version="1.6.0">[1.6.0]</div>
+        </div>
+        <div class="meta-item" data-domain="System" data-scope="Last Updated">
+          <strong>[Last Updated]</strong>
+          <div id="api-timestamp" class="meta-bracket" style="font-size: 0.9em;">-</div>
         </div>
       </div>
     </div>
@@ -657,6 +1643,21 @@
     <div class="btn-group">
       <button class="btn-primary" onclick="updateVisualization()">🔄 Update Visualization</button>
       <button class="btn-secondary" onclick="resetToDefaults()">↩️ Reset</button>
+      <button class="btn-secondary" onclick="exportJSON()" style="background: linear-gradient(135deg, #198754 0%, #20c997 100%);">💾 Export JSON</button>
+      <button class="btn-secondary" onclick="shareURL()" style="background: linear-gradient(135deg, #0d6efd 0%, #0dcaf0 100%);">🔗 Share URL</button>
+      <button class="btn-secondary" onclick="copyAllToClipboard()" style="background: linear-gradient(135deg, #6f42c1 0%, #e83e8c 100%);">📋 Copy All</button>
+    </div>
+    
+    <div class="keyboard-hints" style="margin-top: 30px; padding: 20px; background: rgba(102, 126, 234, 0.1); border-radius: 12px; border-left: 4px solid #667eea;">
+      <h4 style="margin: 0 0 10px 0; color: #667eea; font-size: 1.1em;">⌨️ Keyboard Shortcuts</h4>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; font-size: 0.9em; color: #666;">
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">↑/↓</kbd> Adjust Conflict</div>
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">←/→</kbd> Adjust Entropy</div>
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">Shift+↑/↓</kbd> Adjust Tension</div>
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">R</kbd> Reset</div>
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">C</kbd> Copy HEX</div>
+        <div><kbd style="background: white; padding: 4px 8px; border-radius: 4px; border: 1px solid #dee2e6;">E</kbd> Export JSON</div>
+      </div>
     </div>
   </div>
   
@@ -688,6 +1689,36 @@
     let abortController = null; // For request cancellation
     let updateTimeout = null; // For debouncing slider updates
     
+    // Graph state for zoom/pan/drag
+    let graphState = {
+      zoom: 1,
+      panX: 0,
+      panY: 0,
+      isDragging: false,
+      dragStart: { x: 0, y: 0 },
+      particlesEnabled: true
+    };
+    
+    // Lock state tracking
+    const lockState = {
+      conflict: false,
+      entropy: false,
+      tension: false,
+    };
+    
+    // DOM cache for lock buttons
+    const lockButtons = {
+      conflict: null,
+      entropy: null,
+      tension: null,
+    };
+    
+    const controlGroups = {
+      conflict: null,
+      entropy: null,
+      tension: null,
+    };
+    
     // Cache DOM elements at startup (avoids repeated getElementById calls)
     const DOM = {
       conflictSlider: null,
@@ -701,12 +1732,19 @@
       tensionDisplay: null,
       colorSwatch: null,
       hexDisplay: null,
-      hexValue: null,
+      hexValueLowercase: null,
+      hexValueUppercase: null,
+      hexSwatch: null,
       hslDisplay: null,
+      rgbDisplay: null,
+      rgbValue: null,
       opacityDisplay: null,
       widthDisplay: null,
       relationBadge: null,
       visualNote: null,
+      absorbedBy: null,
+      apiVersion: null,
+      apiTimestamp: null,
       nodeGraph: null,
     };
     
@@ -723,13 +1761,28 @@
       DOM.tensionDisplay = document.getElementById('tension-display');
       DOM.colorSwatch = document.getElementById('color-swatch');
       DOM.hexDisplay = document.getElementById('hex-display');
-      DOM.hexValue = document.getElementById('hex-value');
+      DOM.hexValueLowercase = document.getElementById('hex-value-lowercase');
+      DOM.hexValueUppercase = document.getElementById('hex-value-uppercase');
+      DOM.hexSwatch = document.getElementById('hex-swatch');
       DOM.hslDisplay = document.getElementById('hsl-display');
+      DOM.rgbDisplay = document.getElementById('rgb-display');
+      DOM.rgbValue = document.getElementById('rgb-value');
       DOM.opacityDisplay = document.getElementById('opacity-display');
       DOM.widthDisplay = document.getElementById('width-display');
       DOM.relationBadge = document.getElementById('relation-badge');
       DOM.visualNote = document.getElementById('visual-note');
+      DOM.absorbedBy = document.getElementById('absorbed-by');
+      DOM.apiVersion = document.getElementById('api-version');
+      DOM.apiTimestamp = document.getElementById('api-timestamp');
       DOM.nodeGraph = document.getElementById('node-graph');
+      
+      // Initialize lock buttons and control groups
+      lockButtons.conflict = document.getElementById('conflict-lock');
+      lockButtons.entropy = document.getElementById('entropy-lock');
+      lockButtons.tension = document.getElementById('tension-lock');
+      controlGroups.conflict = document.getElementById('conflict-control-group');
+      controlGroups.entropy = document.getElementById('entropy-control-group');
+      controlGroups.tension = document.getElementById('tension-control-group');
     }
     
     // Load precomputed states if available (with timeout)
@@ -824,7 +1877,45 @@
       return null;
     }
     
+    // Toggle lock state for a slider
+    function toggleLock(type) {
+      if (!lockState.hasOwnProperty(type)) {
+        console.error(`❌ Invalid lock type: ${type}`);
+        return;
+      }
+      
+      // Toggle lock state
+      lockState[type] = !lockState[type];
+      
+      // Get slider and lock button
+      const slider = DOM[`${type}Slider`];
+      const lockBtn = lockButtons[type];
+      const controlGroup = controlGroups[type];
+      
+      if (!slider || !lockBtn || !controlGroup) {
+        console.error(`❌ DOM elements not found for ${type}`);
+        return;
+      }
+      
+      // Update slider disabled state
+      slider.disabled = lockState[type];
+      
+      // Update lock button appearance
+      if (lockState[type]) {
+        lockBtn.classList.add('locked');
+        lockBtn.textContent = '🔒';
+        lockBtn.title = `Unlock ${type.charAt(0).toUpperCase() + type.slice(1)} slider`;
+        controlGroup.classList.add('locked');
+      } else {
+        lockBtn.classList.remove('locked');
+        lockBtn.textContent = '🔓';
+        lockBtn.title = `Lock ${type.charAt(0).toUpperCase() + type.slice(1)} slider`;
+        controlGroup.classList.remove('locked');
+      }
+    }
+    
     // ✅ Optimized: Uses cached DOM elements, debounced updates
+    // ✅ Nano-decimal precision: Preserves exact values without rounding
     function updateSliders() {
       // ✅ Verify DOM elements are cached before accessing
       if (!DOM.conflictSlider || !DOM.entropySlider || !DOM.tensionSlider) {
@@ -832,23 +1923,32 @@
         return;
       }
       
-      // Use cached DOM elements (avoids repeated getElementById calls)
-      const conflict = parseFloat(DOM.conflictSlider.value) / 100;
-      const entropy = parseFloat(DOM.entropySlider.value) / 100;
-      const tension = parseFloat(DOM.tensionSlider.value) / 100;
+      // ✅ Nano-decimal precision: Divide by 1e9 (1 billion) to preserve 9 decimal places
+      // Slider range: 0-1000000000 (0 to 1.0 with nano-decimal precision)
+      // Only update display if slider is not locked
+      if (!lockState.conflict) {
+        const conflict = parseFloat(DOM.conflictSlider.value) / 1000000000;
+        const conflictFormatted = conflict.toFixed(9).replace(/\.?0+$/, '');
+        DOM.conflictValue.textContent = conflictFormatted;
+        DOM.conflictDisplay.textContent = conflictFormatted;
+      }
       
-      // Cache formatted values (avoid recalculating)
-      const conflictFormatted = conflict.toFixed(2);
-      const entropyFormatted = entropy.toFixed(2);
-      const tensionFormatted = tension.toFixed(2);
+      if (!lockState.entropy) {
+        const entropy = parseFloat(DOM.entropySlider.value) / 1000000000;
+        const entropyFormatted = entropy.toFixed(9).replace(/\.?0+$/, '');
+        DOM.entropyValue.textContent = entropyFormatted;
+        DOM.entropyDisplay.textContent = entropyFormatted;
+      }
       
-      // ✅ Use textContent instead of innerHTML (faster, safer)
-      DOM.conflictValue.textContent = conflictFormatted;
-      DOM.conflictDisplay.textContent = conflictFormatted;
-      DOM.entropyValue.textContent = entropyFormatted;
-      DOM.entropyDisplay.textContent = entropyFormatted;
-      DOM.tensionValue.textContent = tensionFormatted;
-      DOM.tensionDisplay.textContent = tensionFormatted;
+      if (!lockState.tension) {
+        const tension = parseFloat(DOM.tensionSlider.value) / 1000000000;
+        const tensionFormatted = tension.toFixed(9).replace(/\.?0+$/, '');
+        DOM.tensionValue.textContent = tensionFormatted;
+        DOM.tensionDisplay.textContent = tensionFormatted;
+      }
+      
+      // Update URL
+      updateURL();
       
       // ✅ Debounce visualization updates (reduces API calls during rapid slider changes)
       if (updateTimeout) {
@@ -865,13 +1965,240 @@
       if (!currentData) return;
       
       // ✅ Use cached DOM element instead of getElementById
-      if (!DOM.hexValue) {
-        console.error('❌ hexValue element not found');
+      if (!DOM.hexValueUppercase) {
+        console.error('❌ hexValueUppercase element not found');
         return;
       }
       
       const hexUpper = currentData.hex.toUpperCase();
-      copyToClipboard(hexUpper, DOM.hexValue);
+      copyToClipboard(hexUpper, DOM.hexValueUppercase);
+    }
+    
+    // Load preset configuration
+    // ✅ Nano-decimal precision: Preserves exact values without rounding
+    function loadPreset(conflict, entropy, tension) {
+      if (!DOM.conflictSlider || !DOM.entropySlider || !DOM.tensionSlider) {
+        console.error('❌ DOM elements not initialized');
+        return;
+      }
+      
+      // ✅ Nano-decimal precision: Multiply by 1e9 (1 billion) to preserve 9 decimal places
+      // No rounding - preserve exact nano-decimal values
+      // Clamp to valid range [0, 1.0] then convert to slider scale [0, 1000000000]
+      const conflictValue = Math.max(0, Math.min(1.0, conflict)) * 1000000000;
+      const entropyValue = Math.max(0, Math.min(1.0, entropy)) * 1000000000;
+      const tensionValue = Math.max(0, Math.min(1.0, tension)) * 1000000000;
+      
+      // Set slider values (no rounding - preserve exact precision)
+      // Only update if slider is not locked
+      if (!lockState.conflict) {
+        DOM.conflictSlider.value = Math.round(conflictValue).toString();
+      }
+      if (!lockState.entropy) {
+        DOM.entropySlider.value = Math.round(entropyValue).toString();
+      }
+      if (!lockState.tension) {
+        DOM.tensionSlider.value = Math.round(tensionValue).toString();
+      }
+      
+      // Update URL
+      updateURL();
+      
+      // Update visualization
+      updateSliders();
+    }
+    
+    // Update URL with current parameters
+    // ✅ Nano-decimal precision: Preserves exact values in URL
+    function updateURL() {
+      if (!DOM.conflictSlider || !DOM.entropySlider || !DOM.tensionSlider) return;
+      
+      // ✅ Nano-decimal precision: Divide by 1e9 and preserve all 9 decimal places
+      const conflict = (parseFloat(DOM.conflictSlider.value) / 1000000000).toFixed(9).replace(/\.?0+$/, '');
+      const entropy = (parseFloat(DOM.entropySlider.value) / 1000000000).toFixed(9).replace(/\.?0+$/, '');
+      const tension = (parseFloat(DOM.tensionSlider.value) / 1000000000).toFixed(9).replace(/\.?0+$/, '');
+      
+      const url = new URL(window.location);
+      url.searchParams.set('conflict', conflict);
+      url.searchParams.set('entropy', entropy);
+      url.searchParams.set('tension', tension);
+      
+      window.history.replaceState({}, '', url);
+    }
+    
+    // Load parameters from URL
+    // ✅ Nano-decimal precision: Preserves exact values from URL
+    function loadFromURL() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const conflict = urlParams.get('conflict');
+      const entropy = urlParams.get('entropy');
+      const tension = urlParams.get('tension');
+      
+      // ✅ Nano-decimal precision: Multiply by 1e9 and use Math.round for exact precision (not floor)
+      // Math.round ensures 0.711167779 * 1e9 = 711167779 (exact, no precision loss)
+      if (conflict && DOM.conflictSlider) {
+        const conflictParsed = parseFloat(conflict);
+        if (!isNaN(conflictParsed)) {
+          const conflictValue = Math.max(0, Math.min(1.0, conflictParsed)) * 1000000000;
+          DOM.conflictSlider.value = Math.round(conflictValue).toString();
+        }
+      }
+      if (entropy && DOM.entropySlider) {
+        const entropyParsed = parseFloat(entropy);
+        if (!isNaN(entropyParsed)) {
+          const entropyValue = Math.max(0, Math.min(1.0, entropyParsed)) * 1000000000;
+          DOM.entropySlider.value = Math.round(entropyValue).toString();
+        }
+      }
+      if (tension && DOM.tensionSlider) {
+        const tensionParsed = parseFloat(tension);
+        if (!isNaN(tensionParsed)) {
+          const tensionValue = Math.max(0, Math.min(1.0, tensionParsed)) * 1000000000;
+          DOM.tensionSlider.value = Math.round(tensionValue).toString();
+        }
+      }
+      
+      if (conflict || entropy || tension) {
+        updateSliders();
+      }
+    }
+    
+    // Copy RGB to clipboard
+    function copyRGBToClipboard() {
+      if (!currentData || !DOM.rgbValue) return;
+      
+      const rgb = currentData.rgb || currentData.color?.rgb;
+      if (!rgb) return;
+      
+      const rgbString = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+      copyToClipboard(rgbString, DOM.rgbValue);
+    }
+    
+    // Copy all color values to clipboard
+    function copyAllToClipboard() {
+      if (!currentData) return;
+      
+      const hexLower = currentData.hex.toLowerCase();
+      const hexUpper = currentData.hex.toUpperCase();
+      const hsl = currentData.hsl || currentData.color?.hsl || '';
+      const rgb = currentData.rgb || currentData.color?.rgb;
+      const rgbString = rgb ? `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})` : '';
+      
+      const allValues = `hex: ${hexLower}\nHEX: ${hexUpper}\nHSL: ${hsl}\nRGB: ${rgbString}\nOpacity: ${(currentData.opacity * 100).toFixed(1)}%\nWidth: ${currentData.width}px`;
+      
+      copyToClipboard(allValues, DOM.hexValueUppercase);
+    }
+    
+    // Export current state as JSON
+    async function exportJSON() {
+      // ✅ If no currentData, fetch it first or use slider values
+      if (!currentData) {
+        // Try to update visualization first to get current data
+        await updateVisualization();
+        // If still no data, use slider values and default color
+        if (!currentData) {
+          const conflict = parseFloat(DOM.conflictSlider.value) / 1000000000;
+          const entropy = parseFloat(DOM.entropySlider.value) / 1000000000;
+          const tension = parseFloat(DOM.tensionSlider.value) / 1000000000;
+          
+          const exportData = {
+            conflict,
+            entropy,
+            tension,
+            color: {
+              hex: '#80FF80',
+              HEX: '#80FF80',
+              hsl: 'hsl(120, 100%, 75%)',
+              hslObject: { h: 120, s: 100, l: 75 },
+              rgb: { r: 128, g: 255, b: 128 },
+            },
+            opacity: 1.0,
+            width: 1,
+            meta: {
+              relation: 'temperate',
+              conflict,
+              entropy,
+              tension,
+            },
+            version: '1.6.0', // ✅ Semantic versioning format - Updated by version-manager.ts
+            timestamp: new Date().toISOString(),
+            exportedAt: new Date().toISOString(),
+            note: 'Data exported before visualization update',
+          };
+          
+          const jsonString = JSON.stringify(exportData, null, 2);
+          const blob = new Blob([jsonString], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `tension-${Date.now()}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return;
+        }
+      }
+      
+      const exportData = {
+        conflict: parseFloat(DOM.conflictSlider.value) / 1000000000,
+        entropy: parseFloat(DOM.entropySlider.value) / 1000000000,
+        tension: parseFloat(DOM.tensionSlider.value) / 1000000000,
+        color: {
+          hex: currentData.hex,
+          HEX: currentData.hex.toUpperCase(),
+          hsl: currentData.hslString || currentData.hsl || currentData.color?.hsl,
+          hslObject: currentData.hsl || currentData.color?.hslObject,
+          rgb: currentData.rgb || currentData.color?.rgb,
+        },
+        opacity: currentData.opacity,
+        width: currentData.width,
+        meta: currentData.meta || {},
+        version: currentData.version || 'unknown',
+        timestamp: currentData.timestamp || new Date().toISOString(),
+        exportedAt: new Date().toISOString(),
+      };
+      
+      const jsonString = JSON.stringify(exportData, null, 2);
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tension-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+    
+    // Share URL - [@PRODUCTION] Disabled in production
+    function shareURL() {
+      // [@PRODUCTION] Disable share URL in production
+      const isProduction = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      
+      if (isProduction) {
+        alert('Share URL is disabled in production for security reasons.');
+        return;
+      }
+      
+      updateURL();
+      const url = window.location.href;
+      
+      if (!DOM.hexValueUppercase) {
+        console.error('❌ hexValueUppercase element not found');
+        return;
+      }
+      
+      copyToClipboard(url, DOM.hexValueUppercase);
+      
+      // Show notification
+      const notification = document.createElement('div');
+      notification.textContent = '✅ URL copied to clipboard!';
+      notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 15px 25px; border-radius: 8px; z-index: 10000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);';
+      document.body.appendChild(notification);
+      setTimeout(() => {
+        notification.remove();
+      }, 2000);
     }
     
     async function updateVisualization() {
@@ -882,9 +2209,10 @@
       }
       
       // Use cached DOM elements
-      const conflict = parseFloat(DOM.conflictSlider.value) / 100;
-      const entropy = parseFloat(DOM.entropySlider.value) / 100;
-      const tension = parseFloat(DOM.tensionSlider.value) / 100;
+      // ✅ Nano-decimal precision: Divide by 1e9 to preserve exact values
+      const conflict = parseFloat(DOM.conflictSlider.value) / 1000000000;
+      const entropy = parseFloat(DOM.entropySlider.value) / 1000000000;
+      const tension = parseFloat(DOM.tensionSlider.value) / 1000000000;
       
       try {
         // ✅ Cancel any pending requests to prevent race conditions
@@ -928,14 +2256,34 @@
             throw new Error(`API error: ${response.status} ${response.statusText}`);
           }
           
-          data = await response.json();
+          const apiResponse = await response.json();
+          
+          // Handle nested API response structure
+          // API returns: { data: { color: { hex, HEX, hsl, ... }, opacity, width, meta }, version, timestamp }
+          if (apiResponse.data) {
+            data = {
+              hex: apiResponse.data.color?.hex || apiResponse.data.color?.HEX?.toLowerCase() || '#80ff80',
+              opacity: apiResponse.data.opacity || 1.0,
+              width: apiResponse.data.width || 1,
+              hsl: apiResponse.data.color?.hslObject || { h: 120, s: 100, l: 75 },
+              hslString: apiResponse.data.color?.hsl || 'hsl(120, 100%, 75%)',
+              rgb: apiResponse.data.color?.rgb,
+              opacityPercent: (apiResponse.data.opacity || 1.0) * 100,
+              meta: apiResponse.data.meta || {},
+              version: apiResponse.version || 'unknown',
+              timestamp: apiResponse.timestamp || new Date().toISOString()
+            };
+          } else {
+            // Fallback: assume flat structure
+            data = apiResponse;
+          }
         }
         
         currentData = data;
         
         // ✅ Normalize hex to uppercase #RRGGBB format (macro-compliant)
         // ✅ Cache hexUpper (used multiple times)
-        const hexUpper = data.hex.toUpperCase().padStart(7, '#');
+        const hexUpper = (data.hex || data.color?.hex || '#80FF80').toUpperCase().replace(/^#?/, '#');
         
         // ✅ Batch CSS custom property updates (single reflow)
         const root = document.documentElement;
@@ -949,17 +2297,36 @@
         DOM.colorSwatch.style.boxShadow = `0 15px 40px rgba(0,0,0,0.3), 0 0 0 4px ${hexUpper}40, inset 0 0 0 4px rgba(255,255,255,0.1)`;
         
         // ✅ Update hex display (use cached DOM elements)
-        DOM.hexValue.textContent = hexUpper; // ✅ textContent (faster than innerHTML)
-        DOM.hexValue.style.color = hexUpper;
-        DOM.hexDisplay.style.borderColor = hexUpper;
-        DOM.hexDisplay.querySelector('.swatch').style.background = hexUpper;
+        // ✅ Update both lowercase and uppercase hex values
+        const hexLower = hexUpper.toLowerCase();
+        
+        if (DOM.hexValueLowercase) {
+          DOM.hexValueLowercase.textContent = hexLower;
+        }
+        if (DOM.hexValueUppercase) {
+          DOM.hexValueUppercase.textContent = hexUpper;
+        }
+        if (DOM.hexSwatch) {
+          DOM.hexSwatch.style.background = hexUpper;
+        }
+        if (DOM.hexDisplay) {
+          DOM.hexDisplay.style.borderColor = hexUpper;
+        }
         
         // ✅ Update HSL display (cache formatted value)
-        const hslValue = precomputedState?.hsl || `hsl(${data.hsl.h}, ${data.hsl.s.toFixed(1)}%, ${data.hsl.l.toFixed(1)}%)`;
+        const hslValue = data.hslString || precomputedState?.hsl || `hsl(${data.hsl.h}, ${data.hsl.s.toFixed(1)}%, ${data.hsl.l.toFixed(1)}%)`;
         DOM.hslDisplay.innerHTML = `
           <span class="label">HSL</span>
           <span class="value">${hslValue}</span>
         `;
+        
+        // ✅ Update RGB display
+        const rgb = data.rgb || data.color?.rgb;
+        if (rgb && DOM.rgbValue) {
+          const rgbString = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+          DOM.rgbValue.textContent = rgbString;
+          DOM.rgbDisplay.style.borderColor = hexUpper;
+        }
         
         // ✅ Update opacity display (cache formatted value)
         const opacityPercentFormatted = data.opacityPercent.toFixed(1);
@@ -989,8 +2356,42 @@
         DOM.relationBadge.style.borderColor = hexUpper;
         DOM.relationBadge.style.boxShadow = `0 4px 15px ${hexUpper}40`;
         
-        // ✅ Update visual note (use cached DOM element)
-        DOM.visualNote.textContent = data.meta.visualNote; // ✅ textContent (faster)
+        // ✅ Update visual note (use cached DOM element) - Format in bracket structure
+        if (DOM.visualNote && data.meta.visualNote) {
+          DOM.visualNote.textContent = `[Edge Tempering][AI-Immunity Indexing][${data.meta.visualNote}][[Visual Note]]`;
+        }
+        
+        // ✅ Update absorbed by (use cached DOM element) - Format in bracket structure
+        if (DOM.absorbedBy && data.meta.absorbedBy) {
+          DOM.absorbedBy.textContent = `[${data.meta.absorbedBy}]`;
+        }
+        
+        // ✅ Update API version - Format in bracket structure with semantic versioning
+        if (DOM.apiVersion && data.version) {
+          // Parse version - ensure semantic versioning format (major.minor.patch)
+          let versionStr = data.version.replace(/^[vV]/, '');
+          // Ensure it has 3 parts (major.minor.patch)
+          const parts = versionStr.split('.');
+          if (parts.length === 2) {
+            versionStr = `${versionStr}.0`;
+          } else if (parts.length === 1) {
+            versionStr = `${versionStr}.0.0`;
+          }
+          DOM.apiVersion.textContent = `[${versionStr}]`;
+          DOM.apiVersion.style.color = '#FF5000';
+          DOM.apiVersion.style.fontWeight = '700';
+        }
+        if (DOM.apiTimestamp && data.timestamp) {
+          const timestamp = new Date(data.timestamp);
+          DOM.apiTimestamp.textContent = timestamp.toLocaleString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          });
+        }
         
         // Update graph with macro colors
         updateGraph(data);
@@ -1009,98 +2410,605 @@
       const graph = DOM.nodeGraph; // ✅ Use cached DOM element
       const svg = graph.querySelector('svg');
       
-      // Clear existing nodes and edges
-      svg.innerHTML = '<defs><marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><polygon points="0 0, 10 3, 0 6" fill="currentColor" /></marker></defs>';
+      if (!svg) {
+        console.error('❌ SVG element not found');
+        return;
+      }
       
-      const width = graph.offsetWidth;
-      const height = graph.offsetHeight;
-      const centerX = width / 2;
-      const centerY = height / 2;
-      const radius = Math.min(width, height) * 0.3;
+      // Clear existing nodes and edges (preserve defs)
+      const defs = svg.querySelector('defs');
+      svg.innerHTML = '';
+      if (defs) {
+        svg.appendChild(defs);
+      } else {
+        // Recreate defs if missing
+        const newDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        const marker = document.createElementNS('http://www.w3.org/2000/svg', 'marker');
+        marker.setAttribute('id', 'arrowhead');
+        marker.setAttribute('markerWidth', '10');
+        marker.setAttribute('markerHeight', '10');
+        marker.setAttribute('refX', '9');
+        marker.setAttribute('refY', '3');
+        marker.setAttribute('orient', 'auto');
+        const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        polygon.setAttribute('points', '0 0, 10 3, 0 6');
+        polygon.setAttribute('fill', 'currentColor');
+        marker.appendChild(polygon);
+        newDefs.appendChild(marker);
+        svg.appendChild(newDefs);
+      }
       
-      // Normalize hex to uppercase for macro compliance
-      const hexUpper = data.hex.toUpperCase();
-      
-      // Create nodes with macro-compliant colors
-      const nodes = [
-        { id: 'node1', x: centerX - radius, y: centerY - radius / 2, label: 'A', color: '#667EEA' },
-        { id: 'node2', x: centerX + radius, y: centerY - radius / 2, label: 'B', color: '#764BA2' },
-        { id: 'node3', x: centerX, y: centerY + radius, label: 'C', color: hexUpper },
-      ];
-      
-      // Create edges with tension color (macro-compliant hex)
-      const edges = [
-        { from: nodes[0], to: nodes[1], color: hexUpper, opacity: data.opacity, width: data.width },
-        { from: nodes[1], to: nodes[2], color: hexUpper, opacity: data.opacity, width: data.width },
-        { from: nodes[2], to: nodes[0], color: hexUpper, opacity: data.opacity, width: data.width },
-      ];
-      
-      // Draw edges
-      edges.forEach(edge => {
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', edge.from.x.toString());
-        line.setAttribute('y1', edge.from.y.toString());
-        line.setAttribute('x2', edge.to.x.toString());
-        line.setAttribute('y2', edge.to.y.toString());
-        line.setAttribute('stroke', edge.color.toUpperCase());
-        line.setAttribute('stroke-width', edge.width.toString());
-        line.setAttribute('opacity', edge.opacity.toString());
-        line.setAttribute('marker-end', 'url(#arrowhead)');
-        svg.appendChild(line);
-      });
-      
-      // Draw nodes
-      nodes.forEach(node => {
-        // Outer glow
-        const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        glow.setAttribute('cx', node.x.toString());
-        glow.setAttribute('cy', node.y.toString());
-        glow.setAttribute('r', '40');
-        glow.setAttribute('fill', 'none');
-        glow.setAttribute('stroke', node.color.toUpperCase());
-        glow.setAttribute('stroke-width', '3');
-        glow.setAttribute('opacity', '0.3');
-        svg.appendChild(glow);
+      // Wait for layout to calculate dimensions
+      // Use setTimeout to ensure layout is complete
+      setTimeout(() => {
+        const graphWidth = graph.offsetWidth || 600;
+        const graphHeight = graph.offsetHeight || 500;
         
-        // Main circle
-        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        circle.setAttribute('cx', node.x.toString());
-        circle.setAttribute('cy', node.y.toString());
-        circle.setAttribute('r', '35');
-        circle.setAttribute('fill', node.color.toUpperCase());
-        circle.setAttribute('stroke', '#333');
-        circle.setAttribute('stroke-width', '4');
-        circle.setAttribute('filter', 'url(#shadow)');
-        svg.appendChild(circle);
-        
-        // Add shadow filter
-        if (!svg.querySelector('defs filter#shadow')) {
-          const defs = svg.querySelector('defs');
-          const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
-          filter.setAttribute('id', 'shadow');
-          filter.setAttribute('x', '-50%');
-          filter.setAttribute('y', '-50%');
-          filter.setAttribute('width', '200%');
-          filter.setAttribute('height', '200%');
-          const feDropShadow = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
-          feDropShadow.setAttribute('in', 'SourceAlpha');
-          feDropShadow.setAttribute('stdDeviation', '4');
-          feDropShadow.setAttribute('result', 'blur');
-          filter.appendChild(feDropShadow);
-          defs.appendChild(filter);
+        if (graphWidth === 0 || graphHeight === 0) {
+          console.warn('⚠️ Graph container has zero dimensions, using defaults');
         }
         
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', node.x.toString());
-        text.setAttribute('y', (node.y + 7).toString());
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('fill', 'white');
-        text.setAttribute('font-weight', '900');
-        text.setAttribute('font-size', '24');
-        text.setAttribute('text-shadow', '0 2px 4px rgba(0,0,0,0.5)');
-        text.textContent = node.label;
-        svg.appendChild(text);
+        // Create transform group FIRST, before adding any elements
+        let transformGroup = svg.querySelector('g.graph-transform');
+        if (!transformGroup) {
+          transformGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          transformGroup.setAttribute('class', 'graph-transform');
+          svg.appendChild(transformGroup);
+        }
+        
+        // Clear transform group (preserve defs in svg)
+        transformGroup.innerHTML = '';
+        
+        const centerX = graphWidth / 2;
+        const centerY = graphHeight / 2;
+        const radius = Math.min(graphWidth, graphHeight) * 0.25;
+        
+        // Normalize hex to uppercase for macro compliance
+        // Handle both nested and flat data structures
+        const hexUpper = (data.hex || data.color?.hex || data.color?.HEX || '#80FF80').toUpperCase().replace(/^#?/, '#');
+        
+        // Ensure opacity and width are numbers
+        const edgeOpacity = typeof data.opacity === 'number' ? data.opacity : (data.opacityPercent || 100) / 100;
+        const edgeWidth = typeof data.width === 'number' ? data.width : 1;
+        
+        // Update legend with current tension color
+        const legendTensionColor = document.getElementById('legend-tension-color');
+        const legendEdgeSample = document.getElementById('legend-edge-sample');
+        if (legendTensionColor) {
+          legendTensionColor.style.background = hexUpper;
+        }
+        if (legendEdgeSample) {
+          legendEdgeSample.style.background = hexUpper;
+          legendEdgeSample.style.opacity = edgeOpacity.toString();
+          legendEdgeSample.style.height = `${Math.max(1, edgeWidth)}px`;
+        }
+        
+        // Create enhanced DNA-like node structure with more nodes
+        const nodeCount = 6; // Expanded from 3 to 6 nodes for DNA structure
+        const nodes = [];
+        const baseRadius = Math.min(graphWidth, graphHeight) * 0.2;
+        
+        // @BUN Socket Addressing: Fetch socket information for node tooltips
+        let socketInfo = null;
+        fetch('/api/tension/socket-info')
+          .then(response => {
+            if (response.ok) {
+              return response.json();
+            }
+            return null;
+          })
+          .then(data => {
+            socketInfo = data;
+          })
+          .catch(error => {
+            console.warn('Failed to fetch socket info:', error);
+          });
+        
+        // Format socket addressing information for tooltips
+        const formatSocketInfo = (info) => {
+          if (!info) return '';
+          return `\n\n[Bun Socket Addressing]\nLocal: ${info.localAddress}:${info.localPort} (${info.localFamily})\nRemote: ${info.remoteAddress} (${info.remoteFamily})\nServer: ${info.serverHostname}:${info.serverPort}`;
+        };
+        
+        // Create primary nodes (A, B, C) - core DNA structure
+        // @BUN Enhanced with socket addressing information
+        nodes.push(
+          { id: 'node1', x: centerX - baseRadius, y: centerY - baseRadius / 2, label: 'A', color: '#667EEA', 
+            tooltip: `Source Node\nConflict: ${(data.meta?.conflict ?? 0).toFixed(3)}\nType: Primary Strand${formatSocketInfo(socketInfo)}`, 
+            type: 'primary', size: 35, socketInfo },
+          { id: 'node2', x: centerX + baseRadius, y: centerY - baseRadius / 2, label: 'B', color: '#764BA2', 
+            tooltip: `Target Node\nEntropy: ${(data.meta?.entropy ?? 0).toFixed(3)}\nType: Primary Strand${formatSocketInfo(socketInfo)}`, 
+            type: 'primary', size: 35, socketInfo },
+          { id: 'node3', x: centerX, y: centerY + baseRadius, label: 'C', color: hexUpper, 
+            tooltip: `Tension Node\nColor: ${hexUpper}\nOpacity: ${(edgeOpacity * 100).toFixed(1)}%\nWidth: ${edgeWidth}px\nType: Tension Core${formatSocketInfo(socketInfo)}`, 
+            type: 'tension', size: 40, socketInfo }
+        );
+        
+        // Create secondary nodes (D, E, F) - DNA helix structure
+        // @BUN Enhanced with socket addressing information
+        const helixRadius = baseRadius * 1.3;
+        const helixAngle = Math.PI / 3; // 60 degrees
+        nodes.push(
+          { id: 'node4', x: centerX + helixRadius * Math.cos(helixAngle), y: centerY + helixRadius * Math.sin(helixAngle), 
+            label: 'D', color: hexUpper, tooltip: `Helix Node D\nTension: ${(data.meta?.tension ?? 0).toFixed(3)}\nType: Helix Strand${formatSocketInfo(socketInfo)}`, 
+            type: 'helix', size: 28, socketInfo },
+          { id: 'node5', x: centerX - helixRadius * Math.cos(helixAngle), y: centerY + helixRadius * Math.sin(-helixAngle), 
+            label: 'E', color: hexUpper, tooltip: `Helix Node E\nCurvature: ${(data.meta?.curvature ?? 'N/A')}\nType: Helix Strand${formatSocketInfo(socketInfo)}`, 
+            type: 'helix', size: 28, socketInfo },
+          { id: 'node6', x: centerX, y: centerY - helixRadius, 
+            label: 'F', color: '#667EEA', tooltip: `Helix Node F\nDrift: ${(data.meta?.drift ?? 'N/A')}\nType: Helix Strand${formatSocketInfo(socketInfo)}`, 
+            type: 'helix', size: 28, socketInfo }
+        );
+        
+        // Create DNA-like edges (double helix pattern)
+        const edges = [];
+        
+        // Primary triangle (A-B-C)
+        edges.push(
+          { from: nodes[0], to: nodes[1], color: hexUpper, opacity: edgeOpacity, width: edgeWidth, label: 'A→B', type: 'primary' },
+          { from: nodes[1], to: nodes[2], color: hexUpper, opacity: edgeOpacity, width: edgeWidth, label: 'B→C', type: 'primary' },
+          { from: nodes[2], to: nodes[0], color: hexUpper, opacity: edgeOpacity, width: edgeWidth, label: 'C→A', type: 'primary' }
+        );
+        
+        // Helix connections (DNA double helix pattern)
+        edges.push(
+          { from: nodes[0], to: nodes[4], color: hexUpper, opacity: edgeOpacity * 0.7, width: edgeWidth * 0.8, label: 'A→E', type: 'helix' },
+          { from: nodes[1], to: nodes[3], color: hexUpper, opacity: edgeOpacity * 0.7, width: edgeWidth * 0.8, label: 'B→D', type: 'helix' },
+          { from: nodes[2], to: nodes[5], color: hexUpper, opacity: edgeOpacity * 0.7, width: edgeWidth * 0.8, label: 'C→F', type: 'helix' },
+          { from: nodes[3], to: nodes[4], color: hexUpper, opacity: edgeOpacity * 0.6, width: edgeWidth * 0.6, label: 'D→E', type: 'helix' },
+          { from: nodes[4], to: nodes[5], color: hexUpper, opacity: edgeOpacity * 0.6, width: edgeWidth * 0.6, label: 'E→F', type: 'helix' },
+          { from: nodes[5], to: nodes[3], color: hexUpper, opacity: edgeOpacity * 0.6, width: edgeWidth * 0.6, label: 'F→D', type: 'helix' }
+        );
+        
+        // Create enhanced filters (shadow, glow, DNA strand)
+        const defs = svg.querySelector('defs');
+        
+        // Shadow filter
+        if (!defs.querySelector('filter#shadow')) {
+          const shadowFilter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+          shadowFilter.setAttribute('id', 'shadow');
+          shadowFilter.setAttribute('x', '-50%');
+          shadowFilter.setAttribute('y', '-50%');
+          shadowFilter.setAttribute('width', '200%');
+          shadowFilter.setAttribute('height', '200%');
+          const feGaussianBlur = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+          feGaussianBlur.setAttribute('in', 'SourceAlpha');
+          feGaussianBlur.setAttribute('stdDeviation', '4');
+          feGaussianBlur.setAttribute('result', 'blur');
+          shadowFilter.appendChild(feGaussianBlur);
+          defs.appendChild(shadowFilter);
+        }
+        
+        // Glow filter for hover effects
+        if (!defs.querySelector('filter#glow')) {
+          const glowFilter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+          glowFilter.setAttribute('id', 'glow');
+          glowFilter.setAttribute('x', '-50%');
+          glowFilter.setAttribute('y', '-50%');
+          glowFilter.setAttribute('width', '200%');
+          glowFilter.setAttribute('height', '200%');
+          const feGaussianBlurGlow = document.createElementNS('http://www.w3.org/2000/svg', 'feGaussianBlur');
+          feGaussianBlurGlow.setAttribute('stdDeviation', '6');
+          feGaussianBlurGlow.setAttribute('result', 'coloredBlur');
+          glowFilter.appendChild(feGaussianBlurGlow);
+          const feMerge = document.createElementNS('http://www.w3.org/2000/svg', 'feMerge');
+          const feMergeNode1 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+          feMergeNode1.setAttribute('in', 'coloredBlur');
+          const feMergeNode2 = document.createElementNS('http://www.w3.org/2000/svg', 'feMergeNode');
+          feMergeNode2.setAttribute('in', 'SourceGraphic');
+          feMerge.appendChild(feMergeNode1);
+          feMerge.appendChild(feMergeNode2);
+          glowFilter.appendChild(feMerge);
+          defs.appendChild(glowFilter);
+        }
+        
+        // DNA strand pattern
+        if (!defs.querySelector('pattern#dnaPattern')) {
+          const dnaPattern = document.createElementNS('http://www.w3.org/2000/svg', 'pattern');
+          dnaPattern.setAttribute('id', 'dnaPattern');
+          dnaPattern.setAttribute('patternUnits', 'userSpaceOnUse');
+          dnaPattern.setAttribute('width', '10');
+          dnaPattern.setAttribute('height', '10');
+          const dnaRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          dnaRect.setAttribute('width', '10');
+          dnaRect.setAttribute('height', '10');
+          dnaRect.setAttribute('fill', 'none');
+          dnaPattern.appendChild(dnaRect);
+          const dnaLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          dnaLine.setAttribute('x1', '0');
+          dnaLine.setAttribute('y1', '5');
+          dnaLine.setAttribute('x2', '10');
+          dnaLine.setAttribute('y2', '5');
+          dnaLine.setAttribute('stroke', hexUpper);
+          dnaLine.setAttribute('stroke-width', '0.5');
+          dnaLine.setAttribute('opacity', '0.3');
+          dnaPattern.appendChild(dnaLine);
+          defs.appendChild(dnaPattern);
+        }
+        
+        // Draw DNA-like edges with enhanced visualization
+        edges.forEach((edge, index) => {
+          const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          line.setAttribute('x1', edge.from.x.toString());
+          line.setAttribute('y1', edge.from.y.toString());
+          line.setAttribute('x2', edge.from.x.toString()); // Start from source
+          line.setAttribute('y2', edge.from.y.toString());
+          line.setAttribute('stroke', edge.color.toUpperCase());
+          line.setAttribute('stroke-width', Math.max(1, edge.width).toString());
+          line.setAttribute('opacity', edge.opacity.toString());
+          
+          // Add DNA strand effect for helix edges
+          if (edge.type === 'helix') {
+            line.setAttribute('class', 'graph-edge dna-strand');
+            line.setAttribute('stroke-dasharray', '5,5');
+          } else {
+            line.setAttribute('class', 'graph-edge');
+            line.setAttribute('marker-end', 'url(#arrowhead)');
+          }
+          
+          line.setAttribute('data-label', edge.label);
+          line.setAttribute('data-type', edge.type);
+          transformGroup.appendChild(line);
+          
+          // Animate edge drawing with staggered timing
+          setTimeout(() => {
+            line.setAttribute('x2', edge.to.x.toString());
+            line.setAttribute('y2', edge.to.y.toString());
+          }, index * 100);
+          
+          // Enhanced hover effects
+          line.addEventListener('mouseenter', () => {
+            line.setAttribute('stroke-width', (Math.max(1, edge.width) * 1.8).toString());
+            line.setAttribute('opacity', Math.min(1, edge.opacity * 1.5).toString());
+            if (edge.type === 'helix') {
+              line.setAttribute('stroke-dasharray', '10,2');
+            }
+          });
+          line.addEventListener('mouseleave', () => {
+            line.setAttribute('stroke-width', Math.max(1, edge.width).toString());
+            line.setAttribute('opacity', edge.opacity.toString());
+            if (edge.type === 'helix') {
+              line.setAttribute('stroke-dasharray', '5,5');
+            }
+          });
+        });
+        
+        // Add particle effects around nodes
+        nodes.forEach((node, nodeIndex) => {
+          for (let i = 0; i < 3; i++) {
+            const particle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            const angle = (Math.PI * 2 * i) / 3;
+            const particleRadius = node.size + 15;
+            particle.setAttribute('cx', (node.x + Math.cos(angle) * particleRadius).toString());
+            particle.setAttribute('cy', (node.y + Math.sin(angle) * particleRadius).toString());
+            particle.setAttribute('r', '2');
+            particle.setAttribute('fill', node.color);
+            particle.setAttribute('opacity', '0.6');
+            particle.setAttribute('class', 'particle');
+            particle.style.animationDelay = `${nodeIndex * 0.2 + i * 0.1}s`;
+            transformGroup.appendChild(particle);
+          }
+        });
+        
+        // Draw enhanced DNA-like nodes with improved interactivity
+        nodes.forEach((node, index) => {
+          // Outer glow with pulse animation (larger for primary nodes)
+          const glowSize = node.type === 'primary' || node.type === 'tension' ? node.size + 15 : node.size + 10;
+          const glow = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          glow.setAttribute('cx', node.x.toString());
+          glow.setAttribute('cy', node.y.toString());
+          glow.setAttribute('r', glowSize.toString());
+          glow.setAttribute('fill', 'none');
+          glow.setAttribute('stroke', node.color.toUpperCase());
+          glow.setAttribute('stroke-width', node.type === 'tension' ? '4' : '3');
+          glow.setAttribute('opacity', node.type === 'tension' ? '0.4' : '0.3');
+          glow.setAttribute('class', 'node-glow');
+          glow.setAttribute('data-node-id', node.id);
+          if (node.type === 'tension') {
+            glow.style.animation = 'nodePulse 2s ease-in-out infinite';
+          }
+          transformGroup.appendChild(glow);
+          
+          // DNA-like inner ring for helix nodes
+          if (node.type === 'helix') {
+            const innerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            innerRing.setAttribute('cx', node.x.toString());
+            innerRing.setAttribute('cy', node.y.toString());
+            innerRing.setAttribute('r', (node.size - 5).toString());
+            innerRing.setAttribute('fill', 'none');
+            innerRing.setAttribute('stroke', node.color.toUpperCase());
+            innerRing.setAttribute('stroke-width', '1');
+            innerRing.setAttribute('opacity', '0.5');
+            innerRing.setAttribute('stroke-dasharray', '3,3');
+            transformGroup.appendChild(innerRing);
+          }
+          
+          // Main circle with enhanced hover effects
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('cx', node.x.toString());
+          circle.setAttribute('cy', node.y.toString());
+          circle.setAttribute('r', node.size.toString());
+          circle.setAttribute('fill', node.color.toUpperCase());
+          circle.setAttribute('stroke', node.type === 'tension' ? '#fff' : '#333');
+          circle.setAttribute('stroke-width', node.type === 'tension' ? '5' : '4');
+          circle.setAttribute('filter', 'url(#shadow)');
+          circle.setAttribute('class', 'node-circle');
+          circle.setAttribute('data-node-id', node.id);
+          circle.setAttribute('data-tooltip', node.tooltip);
+          circle.setAttribute('data-type', node.type);
+          
+          // Enhanced hover effects with DNA-like expansion
+          circle.addEventListener('mouseenter', (e) => {
+            const target = e.target;
+            const currentSize = parseFloat(target.getAttribute('r'));
+            target.setAttribute('r', (currentSize * 1.2).toString());
+            target.setAttribute('stroke-width', (parseFloat(target.getAttribute('stroke-width')) * 1.3).toString());
+            target.setAttribute('filter', 'url(#glow)');
+            
+            // Expand glow ring
+            const glowRing = svg.querySelector(`circle.node-glow[data-node-id="${node.id}"]`);
+            if (glowRing) {
+              const glowR = parseFloat(glowRing.getAttribute('r'));
+              glowRing.setAttribute('r', (glowR * 1.3).toString());
+              glowRing.setAttribute('opacity', '0.6');
+            }
+            
+            // Show enhanced tooltip with metadata
+            const metadata = [
+              node.tooltip,
+              data.meta?.curvature !== undefined ? `Curvature: ${data.meta.curvature.toFixed(3)}` : '',
+              data.meta?.drift !== undefined ? `Drift: ${data.meta.drift.toFixed(3)}` : '',
+              data.meta?.decay !== undefined ? `Decay: ${data.meta.decay.toFixed(3)}` : '',
+              data.meta?.pattern ? `Pattern: ${data.meta.pattern}` : '',
+            ].filter(Boolean).join('\n');
+            
+            showNodeTooltip(node.x, node.y, metadata, graph);
+          });
+          
+          circle.addEventListener('mouseleave', (e) => {
+            const target = e.target;
+            target.setAttribute('r', node.size.toString());
+            target.setAttribute('stroke-width', node.type === 'tension' ? '5' : '4');
+            target.setAttribute('filter', 'url(#shadow)');
+            
+            // Reset glow ring
+            const glowRing = svg.querySelector(`circle.node-glow[data-node-id="${node.id}"]`);
+            if (glowRing) {
+              glowRing.setAttribute('r', glowSize.toString());
+              glowRing.setAttribute('opacity', node.type === 'tension' ? '0.4' : '0.3');
+            }
+            
+            // Hide tooltip
+            hideNodeTooltip();
+          });
+          
+          // Animate node appearance with DNA-like sequence
+          circle.setAttribute('opacity', '0');
+          transformGroup.appendChild(circle);
+          setTimeout(() => {
+            circle.setAttribute('opacity', '1');
+          }, index * 120);
+          
+          // Enhanced node label with type indicator
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', node.x.toString());
+          text.setAttribute('y', (node.y + (node.size * 0.2)).toString());
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('fill', 'white');
+          text.setAttribute('font-weight', '900');
+          text.setAttribute('font-size', node.type === 'tension' ? '26' : '22');
+          text.setAttribute('font-family', 'Arial, sans-serif');
+          text.setAttribute('class', 'node-label');
+          text.setAttribute('text-shadow', '0 1px 2px rgba(0,0,0,0.5)');
+          text.textContent = node.label;
+          transformGroup.appendChild(text);
+          
+          // Add type indicator for helix nodes
+          if (node.type === 'helix') {
+            const typeIndicator = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            typeIndicator.setAttribute('x', node.x.toString());
+            typeIndicator.setAttribute('y', (node.y + node.size + 15).toString());
+            typeIndicator.setAttribute('text-anchor', 'middle');
+            typeIndicator.setAttribute('fill', node.color.toUpperCase());
+            typeIndicator.setAttribute('font-size', '10');
+            typeIndicator.setAttribute('font-weight', 'bold');
+            typeIndicator.setAttribute('opacity', '0.7');
+            typeIndicator.textContent = 'DNA';
+            transformGroup.appendChild(typeIndicator);
+          }
+        });
+        
+        // Apply graph transform after rendering
+        setTimeout(() => {
+          // Ensure transform group exists and contains all elements
+          applyGraphTransform();
+        }, 100);
+        
+        console.log('✅ Node graph rendered:', { 
+          graphWidth, 
+          graphHeight, 
+          nodes: nodes.length, 
+          edges: edges.length,
+          hex: hexUpper,
+          opacity: edgeOpacity,
+          width: edgeWidth
+        });
+      }, 100);
+    }
+    
+    // Tooltip management
+    let tooltipElement = null;
+    
+    function showNodeTooltip(x, y, text, container) {
+      hideNodeTooltip();
+      
+      // Adjust position based on zoom/pan
+      const adjustedX = (x * graphState.zoom) + graphState.panX;
+      const adjustedY = (y * graphState.zoom) + graphState.panY;
+      
+      tooltipElement = document.createElement('div');
+      tooltipElement.className = 'node-tooltip';
+      tooltipElement.style.cssText = `
+        position: absolute;
+        left: ${adjustedX + 50}px;
+        top: ${adjustedY - 30}px;
+        background: linear-gradient(135deg, rgba(30, 60, 114, 0.95) 0%, rgba(102, 126, 234, 0.95) 100%);
+        color: white;
+        padding: 12px 18px;
+        border-radius: 10px;
+        font-size: 0.9em;
+        white-space: pre-line;
+        z-index: 1000;
+        pointer-events: none;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        animation: fadeIn 0.2s ease;
+        border: 2px solid rgba(255,255,255,0.3);
+        max-width: 250px;
+        line-height: 1.6;
+      `;
+      
+      // Enhanced tooltip content with better formatting
+      const lines = text.split('\n');
+      const formattedText = lines.map((line, idx) => {
+        if (idx === 0) {
+          return `<strong style="font-size: 1.1em; display: block; margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 4px;">${line}</strong>`;
+        }
+        return `<span style="display: block; margin-top: 4px; opacity: ${idx === 1 ? '1' : '0.9'};">${line}</span>`;
+      }).join('');
+      
+      tooltipElement.innerHTML = formattedText;
+      container.appendChild(tooltipElement);
+      
+      // Ensure tooltip stays within bounds
+      const rect = tooltipElement.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      if (rect.right > containerRect.right) {
+        tooltipElement.style.left = `${adjustedX - rect.width - 50}px`;
+      }
+      if (rect.bottom > containerRect.bottom) {
+        tooltipElement.style.top = `${adjustedY - rect.height - 30}px`;
+      }
+    }
+    
+    function hideNodeTooltip() {
+      if (tooltipElement) {
+        tooltipElement.remove();
+        tooltipElement = null;
+      }
+    }
+    
+    // Graph controls (zoom/pan/drag)
+    function initGraphControls() {
+      if (!DOM.nodeGraph) return;
+      
+      const zoomInBtn = document.getElementById('zoom-in');
+      const zoomOutBtn = document.getElementById('zoom-out');
+      const resetViewBtn = document.getElementById('reset-view');
+      const toggleParticlesBtn = document.getElementById('toggle-particles');
+      
+      // Zoom controls
+      if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', () => {
+          graphState.zoom = Math.min(2, graphState.zoom + 0.2);
+          applyGraphTransform();
+        });
+      }
+      
+      if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', () => {
+          graphState.zoom = Math.max(0.5, graphState.zoom - 0.2);
+          applyGraphTransform();
+        });
+      }
+      
+      // Reset view
+      if (resetViewBtn) {
+        resetViewBtn.addEventListener('click', () => {
+          graphState.zoom = 1;
+          graphState.panX = 0;
+          graphState.panY = 0;
+          applyGraphTransform();
+        });
+      }
+      
+      // Toggle particles
+      if (toggleParticlesBtn) {
+        toggleParticlesBtn.addEventListener('click', () => {
+          graphState.particlesEnabled = !graphState.particlesEnabled;
+          toggleParticlesBtn.classList.toggle('active', graphState.particlesEnabled);
+          const particles = DOM.nodeGraph.querySelectorAll('.particle');
+          particles.forEach(p => {
+            p.style.display = graphState.particlesEnabled ? 'block' : 'none';
+          });
+        });
+      }
+      
+      // Pan/drag functionality
+      let isDragging = false;
+      let startX = 0, startY = 0;
+      
+      DOM.nodeGraph.addEventListener('mousedown', (e) => {
+        // Don't pan when clicking nodes/edges or control buttons
+        if (e.target.closest('circle.node-circle') || 
+            e.target.closest('line.graph-edge') ||
+            e.target.closest('.graph-control-btn')) {
+          return;
+        }
+        isDragging = true;
+        graphState.isDragging = true;
+        startX = e.clientX - graphState.panX;
+        startY = e.clientY - graphState.panY;
+        DOM.nodeGraph.style.cursor = 'grabbing';
       });
+      
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        graphState.panX = e.clientX - startX;
+        graphState.panY = e.clientY - startY;
+        applyGraphTransform();
+      });
+      
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+        graphState.isDragging = false;
+        if (DOM.nodeGraph) {
+          DOM.nodeGraph.style.cursor = 'grab';
+        }
+      });
+      
+      // Zoom with mouse wheel
+      DOM.nodeGraph.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        graphState.zoom = Math.max(0.5, Math.min(2, graphState.zoom + delta));
+        applyGraphTransform();
+      });
+    }
+    
+    function applyGraphTransform() {
+      if (!DOM.nodeGraph) return;
+      
+      const svg = DOM.nodeGraph.querySelector('svg');
+      if (!svg) {
+        // SVG not rendered yet, wait for next render
+        return;
+      }
+      
+      // Find transform group (should already exist after first render)
+      const g = svg.querySelector('g.graph-transform');
+      if (!g) {
+        // Transform group doesn't exist yet, wait for graph to render
+        return;
+      }
+      
+      const centerX = DOM.nodeGraph.offsetWidth / 2;
+      const centerY = DOM.nodeGraph.offsetHeight / 2;
+      
+      g.setAttribute('transform', `
+        translate(${centerX + graphState.panX}, ${centerY + graphState.panY})
+        scale(${graphState.zoom})
+        translate(${-centerX}, ${-centerY})
+      `);
     }
     
     function resetToDefaults() {
@@ -1110,10 +3018,11 @@
         return;
       }
       
-      // ✅ Use cached DOM elements
-      DOM.conflictSlider.value = 100;
-      DOM.entropySlider.value = 0;
-      DOM.tensionSlider.value = 0;
+      // ✅ Nano-decimal precision: Reset to exact values (1.0, 0.0, 0.0)
+      DOM.conflictSlider.value = 1000000000; // 1.000000000
+      DOM.entropySlider.value = 0;          // 0.000000000
+      DOM.tensionSlider.value = 0;           // 0.000000000
+      
       updateSliders();
     }
     
@@ -1140,9 +3049,99 @@
       DOM.entropySlider.addEventListener('input', updateSliders);
       DOM.tensionSlider.addEventListener('input', updateSliders);
       
+      // Initialize graph controls (zoom/pan/drag)
+      initGraphControls();
+      
+      // Keyboard shortcuts
+      document.addEventListener('keydown', (e) => {
+        // Don't trigger shortcuts when typing in inputs
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        
+        // ✅ Nano-decimal precision: Step values preserve precision
+        // step = 1 means 0.000000001 (nano-decimal step)
+        // Shift key = 5 steps = 0.000000005
+        const step = e.shiftKey ? 5 : 1;
+        
+        switch(e.key) {
+          case 'ArrowUp':
+            e.preventDefault();
+            if (!lockState.conflict) {
+              DOM.conflictSlider.value = Math.min(1000000000, parseInt(DOM.conflictSlider.value) + step);
+              updateSliders();
+            }
+            break;
+          case 'ArrowDown':
+            e.preventDefault();
+            if (!lockState.conflict) {
+              DOM.conflictSlider.value = Math.max(0, parseInt(DOM.conflictSlider.value) - step);
+              updateSliders();
+            }
+            break;
+          case 'ArrowLeft':
+            e.preventDefault();
+            if (!lockState.entropy) {
+              DOM.entropySlider.value = Math.max(0, parseInt(DOM.entropySlider.value) - step);
+              updateSliders();
+            }
+            break;
+          case 'ArrowRight':
+            e.preventDefault();
+            if (!lockState.entropy) {
+              DOM.entropySlider.value = Math.min(1000000000, parseInt(DOM.entropySlider.value) + step);
+              updateSliders();
+            }
+            break;
+          case 'r':
+          case 'R':
+            e.preventDefault();
+            resetToDefaults();
+            break;
+          case 'c':
+          case 'C':
+            e.preventDefault();
+            copyHexToClipboard();
+            break;
+          case 'e':
+          case 'E':
+            e.preventDefault();
+            exportJSON();
+            break;
+        }
+        
+        // Shift + Arrow keys for tension
+        // ✅ Nano-decimal precision: Preserve exact step values
+        // ✅ Respect lock state - don't update if tension slider is locked
+        if (e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault();
+          if (!lockState.tension) {
+            const tensionStep = 5; // Shift = 5 steps
+            if (e.key === 'ArrowUp') {
+              DOM.tensionSlider.value = Math.min(1000000000, parseInt(DOM.tensionSlider.value) + tensionStep);
+            } else {
+              DOM.tensionSlider.value = Math.max(0, parseInt(DOM.tensionSlider.value) - tensionStep);
+            }
+            updateSliders();
+          }
+        }
+      });
+      
+      // Load from URL parameters if present
+      loadFromURL();
+      
       // Initial load (after DOM is confirmed ready)
       updateVisualization();
     }
+    
+    // Expose functions to global scope for onclick handlers
+    window.loadPreset = loadPreset;
+    window.toggleLock = toggleLock;
+    window.copyHexToClipboard = copyHexToClipboard;
+    window.copyRGBToClipboard = copyRGBToClipboard;
+    window.copyAllToClipboard = copyAllToClipboard;
+    window.exportJSON = exportJSON;
+    window.shareURL = shareURL;
+    window.updateVisualization = updateVisualization;
+    window.resetToDefaults = resetToDefaults;
     
     // ✅ Cleanup on page unload (prevent memory leaks)
     window.addEventListener('beforeunload', () => {

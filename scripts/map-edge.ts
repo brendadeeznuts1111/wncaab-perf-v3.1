@@ -194,7 +194,7 @@ function parseKeyValue(key: string, value: string, args: CliArgs): void {
   if (argKey === 'conflict' || argKey === 'entropy' || argKey === 'tension') {
     const num = parseFloat(value);
     if (!isNaN(num)) {
-      (args as any)[argKey] = num;
+      (args as Record<string, number | undefined>)[argKey] = num;
     }
   } else if (argKey === 'format') {
     args.format = value as OutputFormat;
@@ -219,7 +219,7 @@ function parseShortForm(arg: string, args: CliArgs): void {
   // ✅ Cache parseFloat result and validate
   const value = parseFloat(arg.slice(2));
   if (!isNaN(value)) {
-    (args as any)[argKey] = value;
+    (args as Record<string, number | undefined>)[argKey] = value;
   }
 }
 
@@ -274,7 +274,7 @@ function parseKeyValuePair(arg: string, argv: string[], index: number, args: Cli
   if (argKey === 'conflict' || argKey === 'entropy' || argKey === 'tension') {
     const num = parseFloat(nextArg);
     if (!isNaN(num)) {
-      (args as any)[argKey] = num;
+      (args as Record<string, number | undefined>)[argKey] = num;
       return true;
     }
   } else if (argKey === 'format') {
@@ -361,33 +361,73 @@ ${result.meta.conflict},${result.meta.entropy},${result.meta.tension},${result.c
 }
 
 /**
- * Format EdgeRelation result as table
+ * Format EdgeRelation result as table using Bun.inspect.table()
+ * 
+ * ✅ Uses native Bun.inspect.table() for optimal performance
+ * ✅ Supports ANSI colors and proper Unicode/emoji handling
+ * ✅ Property filtering via second parameter (displays only 'Property' and 'Value' columns)
+ * ✅ ANSI color support via options parameter
+ * 
+ * Reference: https://bun.com/docs/runtime/utils#bun-inspect-table-tabulardata%2C-properties%2C-options
+ * 
  * @param result - EdgeRelation result from mapEdgeRelation
+ * @param colors - Terminal color option for ANSI coloring
  * @returns Table-formatted string
  */
-function formatTable(result: EdgeRelation): string {
+function formatTable(result: EdgeRelation, colors: TerminalColor = 'none'): string {
   const emoji = RELATION_EMOJI[result.meta.relation];
   const opacityPercent = Math.round(result.opacity * 100);
   
-  return `
-┌─────────────────────────────────────────────────────────────┐
-│ ${emoji} Tension Mapping Result                              │
-├─────────────────────────────────────────────────────────────┤
-│ Parameters:                                                 │
-│   Conflict:  ${result.meta.conflict.toFixed(3).padStart(7)}                                    │
-│   Entropy:   ${result.meta.entropy.toFixed(3).padStart(7)}                                    │
-│   Tension:   ${result.meta.tension.toFixed(3).padStart(7)}                                    │
-├─────────────────────────────────────────────────────────────┤
-│ Visual Properties:                                           │
-│   Color:     ${result.color.HEX} (${result.color.hsl})                    │
-│   Opacity:   ${opacityPercent}% (${result.opacity.toFixed(3)})                              │
-│   Width:     ${result.width}px                                              │
-├─────────────────────────────────────────────────────────────┤
-│ Metadata:                                                   │
-│   Relation:  ${result.meta.relation.padEnd(20)}                            │
-│   Note:      ${result.meta.visualNote.substring(0, 45).padEnd(45)}         │
-└─────────────────────────────────────────────────────────────┘
-`;
+  // Prepare tabular data for Bun.inspect.table() - compact format
+  // Each row represents a property-value pair for clean two-column display
+  const tableData = [
+    {
+      'Property': 'Conflict',
+      'Value': result.meta.conflict.toFixed(3),
+    },
+    {
+      'Property': 'Entropy',
+      'Value': result.meta.entropy.toFixed(3),
+    },
+    {
+      'Property': 'Tension',
+      'Value': result.meta.tension.toFixed(3),
+    },
+    {
+      'Property': 'Color',
+      'Value': `${result.color.HEX} (${result.color.hsl})`,
+    },
+    {
+      'Property': 'Opacity',
+      'Value': `${opacityPercent}% (${result.opacity.toFixed(3)})`,
+    },
+    {
+      'Property': 'Width',
+      'Value': `${result.width}px`,
+    },
+    {
+      'Property': 'Relation',
+      'Value': `${emoji} ${result.meta.relation}`,
+    },
+    {
+      'Property': 'Note',
+      'Value': result.meta.visualNote,
+    },
+  ];
+  
+  // Use Bun.inspect.table() with:
+  // 1. Property filtering: ['Property', 'Value'] - displays only these columns
+  // 2. ANSI colors: { colors: true } - enables colored headers when requested
+  // Reference: https://bun.com/docs/runtime/utils#bun-inspect-table-tabulardata%2C-properties%2C-options
+  const tableOptions: { colors?: boolean } = {};
+  if (colors !== 'none') {
+    tableOptions.colors = true;
+  }
+  
+  const table = Bun.inspect.table(tableData, ['Property', 'Value'], tableOptions);
+  
+  // Add header with emoji
+  return `${emoji} Tension Mapping Result\n\n${table}`;
 }
 
 /**
@@ -405,7 +445,7 @@ function formatOutput(result: EdgeRelation, format: OutputFormat = DEFAULT_FORMA
     return formatCsv(result);
   }
   if (format === 'table') {
-    return formatTable(result);
+    return formatTable(result, colors);
   }
   
   return formatJson(result, colors);
