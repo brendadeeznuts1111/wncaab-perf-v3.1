@@ -8,9 +8,20 @@
  */
 
 import { CSRF } from "bun";
+import { getCsrfSecret } from "./secrets-manager.ts";
 
-// CSRF secret from environment or default (should be set in production)
-const CSRF_SECRET = process.env.CSRF_SECRET || Bun.env.CSRF_SECRET || "tes-csrf-secret-default-change-in-production";
+// CSRF secret from Bun.secrets or environment (fallback)
+let CSRF_SECRET: string | null = null;
+
+/**
+ * Get CSRF secret (lazy initialization)
+ */
+async function getSecret(): Promise<string> {
+  if (!CSRF_SECRET) {
+    CSRF_SECRET = await getCsrfSecret();
+  }
+  return CSRF_SECRET;
+}
 
 /**
  * Generate CSRF token with rg audit logging
@@ -18,9 +29,10 @@ const CSRF_SECRET = process.env.CSRF_SECRET || Bun.env.CSRF_SECRET || "tes-csrf-
  * @param expiresIn - Token expiry in milliseconds (default: 5 minutes)
  * @returns CSRF token string
  */
-export function generateCsrfToken(expiresIn: number = 5 * 60 * 1000): string {
+export async function generateCsrfToken(expiresIn: number = 5 * 60 * 1000): Promise<string> {
+  const secret = await getSecret();
   const token = CSRF.generate({
-    secret: CSRF_SECRET,
+    secret,
     encoding: "hex",
     expiresIn,
   });
@@ -39,8 +51,9 @@ export function generateCsrfToken(expiresIn: number = 5 * 60 * 1000): string {
  * @param token - CSRF token to verify
  * @returns true if token is valid, false otherwise
  */
-export function verifyCsrfToken(token: string): boolean {
-  const isValid = CSRF.verify(token, { secret: CSRF_SECRET });
+export async function verifyCsrfToken(token: string): Promise<boolean> {
+  const secret = await getSecret();
+  const isValid = CSRF.verify(token, { secret });
   
   // Log verification attempts (success/failure) for audit
   const rgBlock = `[HEADERS_BLOCK_START:v1]{csrfValid:${isValid}}~[SECURITY][nowgoal26.com][CSRF][TOKEN_VERIFY][HTTP/1.1][TES-NGWS-001][Bun.CSRF][#REF:${isValid ? "SUCCESS" : "FAILURE"} ][HEADERS_BLOCK_END]`;
@@ -73,7 +86,7 @@ function logHeadersForRg(rgBlock: string): void {
  * @param request - HTTP Request object
  * @returns true if CSRF token is valid, false otherwise
  */
-export function verifyCsrfFromRequest(request: Request): boolean {
+export async function verifyCsrfFromRequest(request: Request): Promise<boolean> {
   const csrfToken = request.headers.get("X-CSRF-Token");
   
   if (!csrfToken) {
@@ -82,6 +95,6 @@ export function verifyCsrfFromRequest(request: Request): boolean {
     return false;
   }
   
-  return verifyCsrfToken(csrfToken);
+  return await verifyCsrfToken(csrfToken);
 }
 

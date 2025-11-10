@@ -38,7 +38,7 @@ async function getFreshJwtToken(): Promise<{ token: string; expiresIn: number }>
  */
 export async function handleTokenAcquisition(request: Request): Promise<Response> {
   // Verify CSRF token
-  if (!verifyCsrfFromRequest(request)) {
+  if (!(await verifyCsrfFromRequest(request))) {
     logSecurityEvent("CSRF_FAILURE", {
       type: "CSRF",
       api: "Bun.CSRF",
@@ -93,8 +93,8 @@ export async function handleTokenAcquisition(request: Request): Promise<Response
  * @param request - HTTP Request object
  * @returns Response with CSRF token
  */
-export function handleCsrfTokenGeneration(request: Request): Response {
-  const token = generateCsrfToken();
+export async function handleCsrfTokenGeneration(request: Request): Promise<Response> {
+  const token = await generateCsrfToken();
   
   logSecurityEvent("CSRF_GEN", {
     type: "CSRF",

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TES Lifecycle Hyperdashboard</title>
+  <script src="https://unpkg.com/d3@7"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: radial-gradient(ellipse at center, #0a0a12 0%, #050508 100%);
+      color: #e0e0e0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    .dashboard-container {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    #viz {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    .hex-ring {
+      stroke-width: 2px;
+      fill: none;
+      opacity: 0.7;
+      animation: pulse-ring 4s ease-in-out infinite;
+    }
+
+    /* Tension level colors */
+    .tension-optimal {
+      stroke: #2d5aa0;
+      animation: pulse-ring 4s ease-in-out infinite;
+    }
+
+    .tension-low {
+      stroke: #3d7a47;
+      animation: pulse-ring 4s ease-in-out infinite;
+    }
+
+    .tension-medium {
+      stroke: #8a5a2d;
+      animation: pulse-medium 3s ease-in-out infinite;
+    }
+
+    .tension-high {
+      stroke: #a05a2d;
+      animation: pulse-high 2s ease-in-out infinite;
+    }
+
+    .tension-critical {
+      stroke: #a02d2d;
+      animation: pulse-critical 1s ease-in-out infinite;
+    }
+
+    /* Pulse animations */
+    @keyframes pulse-ring {
+      0% {
+        box-shadow: 0 0 0 0 rgba(45, 90, 160, 0.4);
+        opacity: 0.7;
+      }
+      70% {
+        box-shadow: 0 0 0 10px rgba(45, 90, 160, 0);
+        opacity: 0.9;
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(45, 90, 160, 0);
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes pulse-medium {
+      0% {
+        box-shadow: 0 0 0 0 rgba(138, 90, 45, 0.5);
+        opacity: 0.7;
+      }
+      70% {
+        box-shadow: 0 0 0 12px rgba(138, 90, 45, 0);
+        opacity: 0.9;
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(138, 90, 45, 0);
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes pulse-high {
+      0% {
+        box-shadow: 0 0 0 0 rgba(160, 90, 45, 0.6);
+        opacity: 0.7;
+      }
+      70% {
+        box-shadow: 0 0 0 15px rgba(160, 90, 45, 0);
+        opacity: 1;
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(160, 90, 45, 0);
+        opacity: 0.7;
+      }
+    }
+
+    @keyframes pulse-critical {
+      0% {
+        box-shadow: 0 0 0 0 rgba(160, 45, 45, 0.8);
+        opacity: 0.8;
+      }
+      70% {
+        box-shadow: 0 0 0 20px rgba(160, 45, 45, 0);
+        opacity: 1;
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(160, 45, 45, 0);
+        opacity: 0.8;
+      }
+    }
+
+    /* Phase-based colors */
+    .phase-INIT {
+      stroke: #2d5aa0; /* Blue */
+    }
+
+    .phase-AUTH {
+      stroke: #3d7a47; /* Green */
+    }
+
+    .phase-ACTIVE {
+      stroke: #ffd700; /* Yellow */
+    }
+
+    .phase-RENEW {
+      stroke: #ff8c00; /* Orange */
+    }
+
+    .phase-EVICT {
+      stroke: #a02d2d; /* Red */
+    }
+
+    /* Info panel */
+    .info-panel {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(26, 26, 46, 0.9);
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid rgba(45, 45, 77, 0.6);
+      min-width: 250px;
+      z-index: 1000;
+    }
+
+    .info-panel h1 {
+      font-size: 24px;
+      margin-bottom: 10px;
+      color: #e0e0ff;
+    }
+
+    .info-panel .stat {
+      margin: 8px 0;
+      font-size: 14px;
+    }
+
+    .info-panel .stat-label {
+      color: #c0c0ff;
+      font-weight: 600;
+    }
+
+    .info-panel .stat-value {
+      color: #ffffff;
+      margin-left: 10px;
+    }
+
+    /* Dark mode support */
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: radial-gradient(ellipse at center, #0a0a12 0%, #050508 100%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="dashboard-container">
+    <svg id="viz" width="1200" height="800"></svg>
+    <div class="info-panel">
+      <h1>TES Lifecycle</h1>
+      <div class="stat">
+        <span class="stat-label">Active Sessions:</span>
+        <span class="stat-value" id="session-count">0</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Last Update:</span>
+        <span class="stat-value" id="last-update">Never</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const svg = d3.select("#viz");
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    svg.attr("width", width).attr("height", height);
+
+    let currentData = [];
+    let updateInterval;
+
+    /**
+     * Get tension level class based on score
+     */
+    function getTensionClass(tension) {
+      if (tension >= 0.9) return "tension-critical";
+      if (tension >= 0.7) return "tension-high";
+      if (tension >= 0.5) return "tension-medium";
+      if (tension >= 0.3) return "tension-low";
+      return "tension-optimal";
+    }
+
+    /**
+     * Update visualization
+     */
+    function updateVisualization() {
+      fetch('/api/lifecycle/export')
+        .then(response => response.json())
+        .then(result => {
+          const data = result.data || [];
+          currentData = data;
+
+          // Update session count
+          document.getElementById('session-count').textContent = data.length;
+          document.getElementById('last-update').textContent = new Date().toLocaleTimeString();
+
+          // Clear existing rings
+          svg.selectAll('.hex-ring').remove();
+
+          // Create rings for each session
+          data.forEach((d, i) => {
+            const radius = Math.max(20, d.tension * 100);
+            const angle = (i / data.length) * Math.PI * 2;
+            const cx = width / 2 + Math.cos(angle) * (width * 0.3);
+            const cy = height / 2 + Math.sin(angle) * (height * 0.3);
+
+            const ring = svg.append("circle")
+              .attr("class", `hex-ring phase-${d.phase} ${getTensionClass(d.tension)}`)
+              .attr("cx", cx)
+              .attr("cy", cy)
+              .attr("r", radius)
+              .attr("data-phase", d.phase)
+              .attr("data-tension", d.tension.toFixed(3))
+              .style("opacity", 0.7)
+              .style("animation-duration", `${Math.max(1, d.tension * 4)}s`);
+
+            // Add tooltip
+            ring.append("title")
+              .text(`Session: ${d.sessionID}\nPhase: ${d.phase}\nTension: ${d.tension.toFixed(3)}`);
+          });
+        })
+        .catch(error => {
+          console.error('[TES Dashboard] Failed to fetch lifecycle data:', error);
+        });
+    }
+
+    // Initial load
+    updateVisualization();
+
+    // Auto-refresh every 100ms
+    updateInterval = setInterval(updateVisualization, 100);
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+      if (updateInterval) {
+        clearInterval(updateInterval);
+      }
+    });
+  </script>
+</body>
+</html>
+

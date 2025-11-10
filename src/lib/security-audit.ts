@@ -7,7 +7,7 @@
  * @module src/lib/security-audit
  */
 
-type SecurityEvent = "COOKIE_SET" | "JWT_EXTRACT" | "CSRF_VERIFY" | "JWT_REFRESH" | "CSRF_GEN" | "JWT_MISSING" | "CSRF_FAILURE";
+type SecurityEvent = "COOKIE_SET" | "JWT_EXTRACT" | "CSRF_VERIFY" | "JWT_REFRESH" | "CSRF_GEN" | "JWT_MISSING" | "CSRF_FAILURE" | "LIFECYCLE_TRANSITION" | "TENSION_SPIKE" | "FORECAST_ALERT";
 
 interface SecurityEventMetadata {
   domain?: string;

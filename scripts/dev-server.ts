@@ -535,6 +535,7 @@ import { HEADER_HTML } from '../macros/header-macro.ts';
 import { FOOTER_HTML } from '../macros/footer-macro.ts';
 import { generateColorReport } from '../macros/color-macro.ts';
 import { initializeProcessCompat, registerShutdownHandler } from '../lib/process/compat.ts';
+import { integrateLifecycle } from '../src/lib/worker-lifecycle-integration.ts';
 import type { BunRequest } from 'bun';
 import { generateStaticRoutes } from './static-routes.ts';
 import { SplineRenderer, type SplineConfig, type SplinePoint } from './spline-renderer.ts';
@@ -1110,6 +1111,11 @@ function getAllEndpoints(): EndpointsMap {
         { method: 'GET', path: '/api/dev/configs', description: 'Show all configs' },
         { method: 'GET', path: '/api/dev/workers', description: 'Worker telemetry' },
         { method: 'GET', path: '/api/dev/status', description: 'System status' },
+        { method: 'GET', path: '/api/dev/metrics', description: 'Server metrics (pendingRequests, pendingWebSockets)' },
+        { method: 'GET', path: '/api/dev/event-loop', description: 'Event loop monitoring metrics' },
+        { method: 'GET', path: '/api/lifecycle/export', description: 'Export lifecycle visualization data' },
+        { method: 'GET', path: '/api/lifecycle/health', description: 'TES lifecycle health check' },
+        { method: 'GET', path: '/tes-dashboard.html', description: 'TES lifecycle dashboard (hex-ring visualization)' },
         { method: 'GET', path: '/api/bookmakers', description: 'Get all bookmakers' },
         { method: 'GET', path: '/api/bookmakers/:id', description: 'Get bookmaker by ID' },
         { method: 'POST', path: '/api/bookmakers', description: 'Create new bookmaker' },
@@ -3345,6 +3351,58 @@ const devServer = Bun.serve<WebSocketData>({
           totalWorkers: getTotalWorkers(),
         });
         
+        // Get lifecycle metrics
+        let lifecycleMetrics: {
+          active_sessions: number;
+          phase_distribution: Record<string, number>;
+          average_tension: number;
+          tension_level: string;
+          forecast_stable: number;
+          forecast_evict_imminent: number;
+        } | null = null;
+        try {
+          const lifecycleModule = await import('../src/lib/worker-lifecycle-integration.ts').catch(() => null);
+          if (lifecycleModule) {
+            const manager = lifecycleModule.getLifecycleManager();
+            if (manager) {
+              const vizData = manager.exportVizData();
+              const phaseCounts: Record<string, number> = {
+                INIT: 0,
+                AUTH: 0,
+                ACTIVE: 0,
+                RENEW: 0,
+                EVICT: 0,
+              };
+              
+              let totalTension = 0;
+              let evictImminentCount = 0;
+              
+              vizData.forEach((session) => {
+                phaseCounts[session.phase]++;
+                totalTension += session.tension;
+                
+                const state = manager.getState(session.sessionID);
+                if (state?.tension.forecast === 'EVICT_IMMINENT') {
+                  evictImminentCount++;
+                }
+              });
+              
+              const avgTension = vizData.length > 0 ? totalTension / vizData.length : 0;
+              
+              lifecycleMetrics = {
+                active_sessions: vizData.length,
+                phase_distribution: phaseCounts,
+                average_tension: parseFloat(avgTension.toFixed(3)),
+                tension_level: avgTension < 0.3 ? 'OPTIMAL' : avgTension < 0.5 ? 'LOW' : avgTension < 0.7 ? 'MEDIUM' : avgTension < 0.9 ? 'HIGH' : 'CRITICAL',
+                forecast_stable: vizData.length - evictImminentCount,
+                forecast_evict_imminent: evictImminentCount,
+              };
+            }
+          }
+        } catch (error) {
+          // Silently fail - lifecycle metrics are optional
+        }
+        
         const metrics = {
           timestamp: new Date().toISOString(),
           // ✅ High-precision timestamp (10ns resolution)
@@ -3377,6 +3435,7 @@ const devServer = Bun.serve<WebSocketData>({
             requestTimeouts: productionMetrics.requestTimeouts,
             uptime: productionMetrics.uptime,
           },
+          lifecycle: lifecycleMetrics,
           // Client IP address and port for this request
           client: server.requestIP(req),
         };
@@ -4920,6 +4979,92 @@ const devServer = Bun.serve<WebSocketData>({
         const endpoints = getAllEndpoints();
         const workerApiStatus = await checkWorkerApiStatus();
         
+        // Get lifecycle metrics
+        let lifecycleMetrics: {
+          available: boolean;
+          status: string;
+          sessions: {
+            total: number;
+            by_phase: Record<string, number>;
+          };
+          tension: {
+            average: number;
+            level: string;
+          };
+          forecast: {
+            stable: number;
+            evict_imminent: number;
+          };
+          endpoints: {
+            export: string;
+            health: string;
+            dashboard: string;
+          };
+        } | {
+          available: boolean;
+          status: string;
+          error: string;
+        } | null = null;
+        try {
+          const lifecycleModule = await import('../src/lib/worker-lifecycle-integration.ts').catch(() => null);
+          if (lifecycleModule) {
+            const manager = lifecycleModule.getLifecycleManager();
+            if (manager) {
+              const vizData = manager.exportVizData();
+              const phaseCounts: Record<string, number> = {
+                INIT: 0,
+                AUTH: 0,
+                ACTIVE: 0,
+                RENEW: 0,
+                EVICT: 0,
+              };
+              
+              let totalTension = 0;
+              let evictImminentCount = 0;
+              
+              vizData.forEach((session) => {
+                phaseCounts[session.phase]++;
+                totalTension += session.tension;
+                
+                const state = manager.getState(session.sessionID);
+                if (state?.tension.forecast === 'EVICT_IMMINENT') {
+                  evictImminentCount++;
+                }
+              });
+              
+              const avgTension = vizData.length > 0 ? totalTension / vizData.length : 0;
+              
+              lifecycleMetrics = {
+                available: true,
+                status: 'operational',
+                sessions: {
+                  total: vizData.length,
+                  by_phase: phaseCounts,
+                },
+                tension: {
+                  average: parseFloat(avgTension.toFixed(3)),
+                  level: avgTension < 0.3 ? 'OPTIMAL' : avgTension < 0.5 ? 'LOW' : avgTension < 0.7 ? 'MEDIUM' : avgTension < 0.9 ? 'HIGH' : 'CRITICAL',
+                },
+                forecast: {
+                  stable: vizData.length - evictImminentCount,
+                  evict_imminent: evictImminentCount,
+                },
+                endpoints: {
+                  export: '/api/lifecycle/export',
+                  health: '/api/lifecycle/health',
+                  dashboard: '/tes-dashboard.html',
+                },
+              };
+            }
+          }
+        } catch (error) {
+          lifecycleMetrics = {
+            available: false,
+            status: 'error',
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+        
         // Server Metrics
         // [#REF] https://bun.com/docs/runtime/http/server#server-metrics
         // - server.pendingRequests - Number of in-flight HTTP requests
@@ -5002,6 +5147,11 @@ const devServer = Bun.serve<WebSocketData>({
               },
             },
           },
+          lifecycle: lifecycleMetrics || {
+            available: false,
+            status: 'not_initialized',
+            message: 'Lifecycle manager not initialized',
+          },
         };
         
         return jsonResponse(status, 200, {
@@ -5016,6 +5166,126 @@ const devServer = Bun.serve<WebSocketData>({
           `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
           500,
           { domain: 'dev', scope: 'status', version: 'v2.1' }
+        );
+      }
+    },
+    
+    // @ROUTE GET /api/lifecycle/health
+    // TES-NGWS-001.9: Lifecycle health check endpoint
+    '/api/lifecycle/health': async (req, server) => {
+      const startTime = performance.now();
+      try {
+        const { getLifecycleManager } = await import('../src/lib/worker-lifecycle-integration.ts');
+        const manager = getLifecycleManager();
+        
+        if (!manager) {
+          return jsonResponse({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            service: 'tes-lifecycle',
+            error: 'Lifecycle manager not initialized',
+            checks: {
+              manager_initialized: { status: 'unhealthy', message: 'Manager not initialized' },
+            },
+          }, 503, {
+            domain: 'system',
+            scope: 'lifecycle',
+            version: 'v1.0',
+            includeTiming: true,
+            startTime,
+          });
+        }
+        
+        const vizData = manager.exportVizData();
+        const phaseCounts: Record<string, number> = {
+          INIT: 0,
+          AUTH: 0,
+          ACTIVE: 0,
+          RENEW: 0,
+          EVICT: 0,
+        };
+        
+        let totalTension = 0;
+        let evictImminentCount = 0;
+        let maxTension = 0;
+        let minTension = 1;
+        
+        vizData.forEach((session) => {
+          phaseCounts[session.phase]++;
+          totalTension += session.tension;
+          maxTension = Math.max(maxTension, session.tension);
+          minTension = Math.min(minTension, session.tension);
+          
+          const state = manager.getState(session.sessionID);
+          if (state?.tension.forecast === 'EVICT_IMMINENT') {
+            evictImminentCount++;
+          }
+        });
+        
+        const avgTension = vizData.length > 0 ? totalTension / vizData.length : 0;
+        const tensionLevel = avgTension < 0.3 ? 'OPTIMAL' : avgTension < 0.5 ? 'LOW' : avgTension < 0.7 ? 'MEDIUM' : avgTension < 0.9 ? 'HIGH' : 'CRITICAL';
+        const isHealthy = avgTension < 0.9 && evictImminentCount === 0;
+        
+        const healthResponse = {
+          status: isHealthy ? 'healthy' : 'degraded',
+          timestamp: new Date().toISOString(),
+          service: 'tes-lifecycle',
+          port: server.port,
+          checks: {
+            manager_initialized: { status: 'healthy', message: 'Manager operational' },
+            active_sessions: {
+              status: 'healthy',
+              count: vizData.length,
+              message: `${vizData.length} active session(s)`,
+            },
+            tension_level: {
+              status: avgTension < 0.9 ? 'healthy' : 'unhealthy',
+              level: tensionLevel,
+              average: parseFloat(avgTension.toFixed(3)),
+              min: parseFloat(minTension.toFixed(3)),
+              max: parseFloat(maxTension.toFixed(3)),
+            },
+            forecast: {
+              status: evictImminentCount === 0 ? 'healthy' : 'warning',
+              stable: vizData.length - evictImminentCount,
+              evict_imminent: evictImminentCount,
+            },
+          },
+          summary: {
+            total_sessions: vizData.length,
+            phase_distribution: phaseCounts,
+            tension: {
+              average: parseFloat(avgTension.toFixed(3)),
+              level: tensionLevel,
+              range: {
+                min: parseFloat(minTension.toFixed(3)),
+                max: parseFloat(maxTension.toFixed(3)),
+              },
+            },
+            forecast: {
+              stable: vizData.length - evictImminentCount,
+              evict_imminent: evictImminentCount,
+            },
+          },
+          endpoints: {
+            export: '/api/lifecycle/export',
+            health: '/api/lifecycle/health',
+            dashboard: '/tes-dashboard.html',
+          },
+        };
+        
+        return jsonResponse(healthResponse, isHealthy ? 200 : 503, {
+          domain: 'system',
+          scope: 'lifecycle',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Lifecycle health check failed: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'system', scope: 'lifecycle', version: 'v1.0' }
         );
       }
     },
@@ -6270,6 +6540,48 @@ const devServer = Bun.serve<WebSocketData>({
     // @BUN Worker lifecycle management with process isolation
     // ============================================================================
     
+    // @ROUTE GET /api/lifecycle/export
+    // Export lifecycle visualization data
+    '/api/lifecycle/export': async (req, server) => {
+      const startTime = performance.now();
+      try {
+        const { getLifecycleManager } = await import('../src/lib/worker-lifecycle-integration.ts');
+        const manager = getLifecycleManager();
+        
+        if (!manager) {
+          return jsonResponse({
+            error: 'Lifecycle manager not initialized',
+            data: [],
+          }, 503, {
+            domain: 'system',
+            scope: 'lifecycle',
+            version: 'v1.0',
+            includeTiming: true,
+            startTime,
+          });
+        }
+        
+        const vizData = manager.exportVizData();
+        return jsonResponse({
+          data: vizData,
+          count: vizData.length,
+          timestamp: Date.now(),
+        }, 200, {
+          domain: 'system',
+          scope: 'lifecycle',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to export lifecycle data: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'system', scope: 'lifecycle', version: 'v1.0' }
+        );
+      }
+    },
+    
     // @ROUTE GET /api/workers/registry
     // Get all active workers
     '/api/workers/registry': async (req, server) => {
@@ -6943,6 +7255,9 @@ const devServer = Bun.serve<WebSocketData>({
 // ✅ Initialize metrics tracking after server is created
 initializeMetricsTracking(devServer);
 
+// ✅ Initialize TES lifecycle integration
+integrateLifecycle(devServer);
+
 /**
  * SharedMap interface for zero-copy worker state
  * SharedMap provides atomic reads/writes without serialization cost
@@ -6993,6 +7308,10 @@ console.log(`   GET  /api/dev/configs     → All configs`);
 console.log(`   GET  /api/dev/workers    → Worker telemetry`);
 console.log(`   GET  /api/dev/status     → System status`);
 console.log(`   GET  /api/dev/metrics    → Server metrics (pendingRequests, pendingWebSockets)`);
+console.log(`   GET  /api/dev/event-loop → Event loop monitoring metrics`);
+console.log(`   GET  /api/lifecycle/export → Export lifecycle visualization data`);
+console.log(`   GET  /api/lifecycle/health → TES lifecycle health check`);
+console.log(`   GET  /tes-dashboard.html → TES lifecycle dashboard`);
 console.log(`   GET  /api/tension/health → Tension mapping health check`);
 console.log(`   GET  /api/tension/help   → Tension mapping help documentation`);
 console.log(`\n💡 Open ${devServer.url} in your browser!`);
