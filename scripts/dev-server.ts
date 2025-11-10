@@ -461,6 +461,8 @@ import { mapEdgeRelation } from '../macros/tension-map.ts';
 import { gaugeWNBATOR, formatGaugeResult } from '../macros/womens-sports-gauge.ts';
 import { autoMaparse } from '../cli/ai-maparse.ts';
 import { validateThreshold } from '../macros/validate-threshold.ts';
+import { HEADER_HTML } from '../macros/header-macro.ts';
+import { FOOTER_HTML } from '../macros/footer-macro.ts';
 import type { BunRequest } from 'bun';
 import { generateStaticRoutes } from './static-routes.ts';
 
@@ -988,10 +990,9 @@ function generateDashboard() {
   const devEndpoints = endpoints.dev.endpoints.map(e => createEndpointLink(e, endpoints.dev.base)).join('\n');
   
   const version = safeVersion;
-  // ✅ Ensure URLs are properly formatted (no trailing slashes)
-  const repoUrl = REPO_URL.replace(/\/$/, '');
-  const issuesUrl = `${repoUrl}/issues`;
-  const prsUrl = `${repoUrl}/pulls`;
+  
+  // ✅ Macro-forged header and footer (build-time validated, zero runtime cost)
+  // Header and footer are generated at build time with validated links and git metadata
   
   return `<!DOCTYPE html>
 <html lang="en">
@@ -1355,22 +1356,7 @@ function generateDashboard() {
 </head>
 <body>
   <div class="container">
-    <header class="header">
-      <div class="header-content">
-        <div class="header-title">
-          <h1>🚀 WNCAAB Dev Server Dashboard</h1>
-          <p class="subtitle">Unified API, Config, and Worker Telemetry Dashboard</p>
-        </div>
-        <div class="header-meta">
-          <div class="version-badge">v${version}</div>
-          <div class="header-links">
-            <a href="${repoUrl}" target="_blank" class="header-link" title="View Repository">📦 Repo</a>
-            <a href="${issuesUrl}" target="_blank" class="header-link" title="View Issues">🐛 Issues</a>
-            <a href="${prsUrl}" target="_blank" class="header-link" title="View Pull Requests">🔀 PRs</a>
-          </div>
-        </div>
-      </div>
-    </header>
+    ${HEADER_HTML}
     
     <div class="section" style="background: linear-gradient(135deg, #fff5e6 0%, #ffe0cc 100%); border-left: 6px solid #fd7e14; margin-bottom: 40px;">
       <h2 style="color: #fd7e14; font-size: 1.8em; margin-bottom: 15px;">🎨 Quick Access: Enhanced CLI Apocalypse v1.4.2</h2>
@@ -1527,35 +1513,7 @@ function generateDashboard() {
     
     <button class="refresh-btn" onclick="location.reload()">🔄 Refresh</button>
     
-    <footer class="footer">
-      <div class="footer-content">
-        <div class="footer-left">
-          <div style="font-weight: 700; margin-bottom: 8px; font-size: 1.1em;">${safeName}</div>
-          <div class="footer-info">
-            <div>Version ${safeVersion} • ${safeLicense} License</div>
-            <div style="margin-top: 5px;">© ${new Date().getFullYear()} ${safeAuthor}</div>
-          </div>
-        </div>
-        <div class="footer-right">
-          <a href="${repoUrl}" target="_blank" class="footer-link">
-            <span>📦</span>
-            <span>Repository</span>
-          </a>
-          <a href="${issuesUrl}" target="_blank" class="footer-link">
-            <span>🐛</span>
-            <span>Issues</span>
-          </a>
-          <a href="${prsUrl}" target="_blank" class="footer-link">
-            <span>🔀</span>
-            <span>Pull Requests</span>
-          </a>
-          <a href="/api/dev/status" target="_blank" class="footer-link">
-            <span>📊</span>
-            <span>API Status</span>
-          </a>
-        </div>
-      </div>
-    </footer>
+    ${FOOTER_HTML}
   </div>
   
   <script>

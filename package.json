@@ -67,6 +67,8 @@
     "build:tension-states": "bun run build/tension-page-macro.ts",
     "build:tension-page": "bun run build/render-tension-page.ts",
     "build:tension": "bun run build:tension-states && bun run build:tension-page",
+    "build:validate-links": "bun run build/validate-links.ts",
+    "prebuild": "bun run build/validate-links.ts",
     "version": "bun run scripts/version-tracker.js",
     "version:check": "bun run scripts/version-tracker.js"
   },
