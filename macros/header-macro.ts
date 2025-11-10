@@ -8,14 +8,14 @@
  */
 
 import { DASHBOARD_META } from "./dashboard-meta.ts";
-import { WNCAAB_COLORS, getContrastColor, hexToRgba } from "./color-macro.ts";
+import { getColor, getContrastColor, hexToRgba } from "./color-macro.ts";
 
 // Primary color from tension map (green-thin edge #80FF80)
-// ✅ Using WNCAAB theme colors from color-macro.ts
-const PRIMARY_HEX = WNCAAB_COLORS.primary;
-const PRIMARY_DARK = WNCAAB_COLORS.primaryDark;
+// ✅ Using getColor() to track usage for monitoring system
+const PRIMARY_HEX = getColor('primary');
+const PRIMARY_DARK = getColor('primaryDark');
 const CONTRAST_COLOR = getContrastColor(PRIMARY_HEX);
-const LIVE_INDICATOR = WNCAAB_COLORS.liveIndicator;
+const LIVE_INDICATOR = getColor('liveIndicator');
 
 export const generateHeader = () => `
 <header class="dashboard-header" style="
