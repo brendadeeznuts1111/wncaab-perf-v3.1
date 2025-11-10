@@ -1329,8 +1329,8 @@ function generateDashboard() {
               <span class="stat-value" id="color-used">Loading...</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Unused:</span>
-              <span class="stat-value" id="color-unused" style="color: #28a745;">Loading...</span>
+              <span class="stat-label">Reserved:</span>
+              <span class="stat-value" id="color-unused" style="color: #fd7e14;">Loading...</span>
             </div>
           </div>
           <div class="card-actions">
@@ -1471,7 +1471,8 @@ function generateDashboard() {
       if (colorUsed) colorUsed.textContent = colorStats.used.length;
       if (colorUnused) {
         colorUnused.textContent = colorStats.unused;
-        colorUnused.style.color = colorStats.unused > 0 ? '#dc3545' : '#28a745';
+        // Reserved colors are intentional, use orange (info) instead of red (error)
+        colorUnused.style.color = colorStats.unused > 0 ? '#fd7e14' : '#28a745';
       }
     });
     
@@ -1502,9 +1503,9 @@ function generateDashboard() {
                 <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Used</div>
                 <div style="font-size:2em;font-weight:800;color:#28a745;">\${colorStats.used.length}</div>
               </div>
-              <div style="padding:15px;background:\${colorStats.unused > 0 ? '#ffe7e7' : '#e7f5e7'};border-radius:8px;text-align:center;">
-                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Unused</div>
-                <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#dc3545' : '#28a745'};">\${colorStats.unused}</div>
+              <div style="padding:15px;background:\${colorStats.unused > 0 ? '#fff4e6' : '#e7f5e7'};border-radius:8px;text-align:center;">
+                <div style="font-size:0.9em;color:#666;margin-bottom:5px;">Reserved</div>
+                <div style="font-size:2em;font-weight:800;color:\${colorStats.unused > 0 ? '#fd7e14' : '#28a745'};">\${colorStats.unused}</div>
               </div>
             </div>
             <h3 style="color:#333;margin-bottom:10px;">🚨 Unused Colors</h3>
