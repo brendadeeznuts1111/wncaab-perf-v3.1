@@ -463,6 +463,7 @@ import { autoMaparse } from '../cli/ai-maparse.ts';
 import { validateThreshold } from '../macros/validate-threshold.ts';
 import { HEADER_HTML } from '../macros/header-macro.ts';
 import { FOOTER_HTML } from '../macros/footer-macro.ts';
+import { generateColorReport } from '../macros/color-macro.ts';
 import type { BunRequest } from 'bun';
 import { generateStaticRoutes } from './static-routes.ts';
 
@@ -967,17 +968,8 @@ function generateDashboard() {
   const endpoints = getAllEndpoints();
   
   // Generate color usage report for dashboard
-  // Note: Colors are tracked when macros are imported (header/footer macros use getColor())
-  // Since HEADER_HTML and FOOTER_HTML are already imported, colors should be tracked
-  let colorReport = { total: 16, used: [], unused: [], unusedCount: 16 };
-  try {
-    // Import and generate report (colors tracked during header/footer macro imports)
-    const colorMacro = await import('../macros/color-macro.ts');
-    colorReport = colorMacro.generateColorReport();
-  } catch (error) {
-    // Fallback if import fails - use static values
-    console.warn('[Dashboard] Could not generate color report:', error);
-  }
+  // Colors are tracked when header/footer macros are imported (they use getColor())
+  const colorReport = generateColorReport();
   
   // Escape user-controlled content to prevent XSS attacks
   // Bun.escapeHTML() converts <, >, &, ", ' to HTML entities
