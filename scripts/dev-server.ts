@@ -41,7 +41,7 @@
  *    rg '@GREP|@ROUTE|@BUN|@PERF' scripts/dev-server.ts | \
  *      awk -F: '{print $1 "\t" $2 "\t" $3}' > .tags
  * 
- * Dev Server - Unified API Dashboard (v2.1.0)
+ * Dev Server - Unified API Dashboard (v2.1.02)
  * ============================================
  * 
  * Enhanced with:
@@ -535,6 +535,29 @@ import { HEADER_HTML } from '../macros/header-macro.ts';
 import { FOOTER_HTML } from '../macros/footer-macro.ts';
 import { generateColorReport } from '../macros/color-macro.ts';
 import { initializeProcessCompat, registerShutdownHandler } from '../lib/process/compat.ts';
+import { getTESDomainConfigCached } from '../src/config/tes-domain-config.ts';
+import {
+  getComponentVersions,
+  BETTING_GLOSSARY_VERSION,
+  GAUGE_API_VERSION,
+  VALIDATION_THRESHOLD_VERSION,
+  ENDPOINT_CHECKER_VERSION,
+  SPLINE_API_VERSION,
+  AI_MAPARSE_VERSION,
+  TENSION_API_VERSION,
+  DEV_SERVER_VERSION,
+} from '../src/config/component-versions.ts';
+import { getVersionRegistryLoader, type LoadedVersionEntity } from '../src/config/version-registry-loader.ts';
+
+// Helper function to categorize colors for the API
+function getColorCategory(name: string): string {
+  if (name.includes('primary')) return 'primary';
+  if (name.includes('contrast')) return 'contrast';
+  if (['success', 'error', 'warning', 'info'].includes(name)) return 'status';
+  if (name.includes('background') || name.includes('card') || name.includes('text') || name.includes('border')) return 'ui';
+  if (name.includes('live')) return 'indicator';
+  return 'other';
+}
 import { integrateLifecycle } from '../src/lib/worker-lifecycle-integration.ts';
 import type { BunRequest } from 'bun';
 import { generateStaticRoutes } from './static-routes.ts';
@@ -566,6 +589,8 @@ import {
   incrementMetric,
 } from '../lib/production-utils.ts';
 
+import { checkDashboardRateLimit, checkApiRateLimit } from '../lib/rate-limiter.ts';
+
 // Import shared utilities from lib modules
 import {
   DEFAULT_PORT,
@@ -592,6 +617,8 @@ import {
   generateETag,
   checkETag,
   CORS_HEADERS,
+  dashboardHeaders,
+  securityHeaders,
   type ApiHeadersOptions,
 } from '../lib/headers.ts';
 
@@ -726,12 +753,17 @@ type RouteHandler<T extends string> = (req: BunRequest<T>) => Response | Promise
 // In development mode, Bun automatically enables HMR for HTML imports
 // The HTML file and its assets will be re-bundled on each request when development: true
 let tensionPage = await import('../templates/tension.html').then(m => m.default);
+let glossaryPage = await import('../templates/glossary.html').then(m => m.default);
 
-// Enable HMR for HTML template (if import.meta.hot is available)
+// Enable HMR for HTML templates (if import.meta.hot is available)
 if (import.meta.hot) {
   import.meta.hot.accept('../templates/tension.html', (module) => {
     tensionPage = module.default;
     console.log('✅ HMR: tension.html reloaded');
+  });
+  import.meta.hot.accept('../templates/glossary.html', (module) => {
+    glossaryPage = module.default;
+    console.log('✅ HMR: glossary.html reloaded');
   });
 }
 
@@ -1108,7 +1140,10 @@ function getAllEndpoints(): EndpointsMap {
       base: `http://localhost:${DEFAULT_PORT}`,
       endpoints: [
         { method: 'GET', path: '/api/dev/endpoints', description: 'List all API endpoints' },
+        { method: 'GET', path: '/api/dev/endpoints/check', description: 'Check all endpoints with header metadata enrichment' },
+        { method: 'GET', path: '/api/dev/versions', description: 'Get all component versions' },
         { method: 'GET', path: '/api/dev/configs', description: 'Show all configs' },
+        { method: 'GET', path: '/api/dev/colors', description: 'Get color palette and usage stats' },
         { method: 'GET', path: '/api/dev/workers', description: 'Worker telemetry' },
         { method: 'GET', path: '/api/dev/status', description: 'System status' },
         { method: 'GET', path: '/api/dev/metrics', description: 'Server metrics (pendingRequests, pendingWebSockets)' },
@@ -1122,6 +1157,7 @@ function getAllEndpoints(): EndpointsMap {
         { method: 'PATCH', path: '/api/bookmakers/:id/flags/:flag', description: 'Update bookmaker feature flag' },
         { method: 'PATCH', path: '/api/bookmakers/:id/rollout', description: 'Update bookmaker rollout' },
         { method: 'GET', path: '/registry', description: 'Bookmaker registry dashboard (HTML)' },
+        { method: 'GET', path: '/tiers', description: 'Tier distribution dashboard (HTML)' },
         { method: 'GET', path: '/api/registry/bookmakers', description: 'List all bookmakers with R2 URLs' },
         { method: 'GET', path: '/api/registry/profile/:bookieId', description: 'Get bookmaker profile' },
         { method: 'GET', path: '/api/registry/manifests/:bookieId', description: 'Get RG index manifests' },
@@ -1176,6 +1212,42 @@ function generateDashboard() {
   const safeAuthor = escapeHtml(packageInfo.author) || 'WNCAAB Syndicate';
   const safeName = escapeHtml(packageInfo.name) || 'WNCAAB Perf v3.1';
   const safeLicense = escapeHtml(packageInfo.license) || 'MIT';
+  
+  // TES-OPS-004.A: Get component versions for UI display
+  const componentVersions = getComponentVersions();
+  const safeComponentVersions: Record<string, string> = {};
+  for (const [key, value] of Object.entries(componentVersions)) {
+    safeComponentVersions[key] = escapeHtml(value);
+  }
+  
+  // Helper function to display version badge
+  const versionDisplay = (version: string | undefined): string => {
+    if (!version) return '';
+    return ` <span class="version-badge" style="
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      background: rgba(0, 0, 0, 0.05);
+      border-radius: 4px;
+      font-size: 0.75em;
+      font-weight: 600;
+      color: #666;
+      font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+      margin-left: 0.25rem;
+    ">(v${version})</span>`;
+  };
+  
+  // TES-OPS-004.A.5: Log UI version render event for rg indexing
+  const versionRenderLog = {
+    '[UI]': '[DASHBOARD]',
+    '[RENDER]': '[V1.0]',
+    '[TICKET]': '[TES-OPS-004.A]',
+    '[VERSION_DISPLAYED]': componentVersions,
+    '[TS]': Date.now(),
+  };
+  const logLine = `${new Date().toISOString()} ${JSON.stringify(versionRenderLog)}\n`;
+  Bun.write('logs/ui-version-renders.log', logLine, { createPath: true }).catch(() => {
+    // Silently fail if log write fails
+  });
   
   // Helper function to generate endpoint links (handles WebSocket vs HTTP)
   const createEndpointLink = (endpoint: EndpointInfo, base: string) => {
@@ -1457,240 +1529,2535 @@ function generateDashboard() {
      */
     /* .header { ... } - ARCHIVED */
     /* .footer { ... } - ARCHIVED */
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.9;
+        transform: scale(1.02);
+      }
+    }
   </style>
 </head>
 <body>
   <div class="container">
     ${HEADER_HTML}
     
-    <div class="section" style="background: linear-gradient(135deg, #fff5e6 0%, #ffe0cc 100%); border-left: 6px solid #fd7e14; margin-bottom: 40px;">
-      <h2 style="color: #fd7e14; font-size: 1.8em; margin-bottom: 15px;">🎨 Quick Access: Enhanced CLI Apocalypse v1.4.2</h2>
-      <p style="margin-bottom: 20px; color: #666; font-size: 1.1em;">Interactive edge tempering visualization + WNBATOR gauge + AI maparse + Threshold validator</p>
-      <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 20px;">
-        <a href="/tension" style="display: inline-block; padding: 15px 30px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 1.1em; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4); transition: all 0.3s;">🎨 Tension Visualizer →</a>
-        <a href="/api/tension/map?conflict=1.0&entropy=0.0&tension=0.0" target="_blank" style="display: inline-block; padding: 15px 30px; background: white; color: #667eea; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 1.1em; border: 2px solid #667eea; transition: all 0.3s;">🔗 Tension API →</a>
-      </div>
-      <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <a href="/api/gauge/womens-sports?oddsSkew=0.92&volumeVelocity=47000&volatilityEntropy=0.41&timeDecay=323&momentumCurvature=0.89" target="_blank" style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95em; box-shadow: 0 3px 10px rgba(40, 167, 69, 0.3);">📊 WNBATOR Gauge →</a>
-        <a href="/api/ai/maparse?prices=100,102,105,110,118" target="_blank" style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #17a2b8 0%, #138496 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95em; box-shadow: 0 3px 10px rgba(23, 162, 184, 0.3);">🤖 AI Maparse →</a>
-        <a href="/api/validate/threshold?threshold=0.7-.0012" target="_blank" style="display: inline-block; padding: 12px 24px; background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); color: #333; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95em; box-shadow: 0 3px 10px rgba(255, 193, 7, 0.3);">✅ Threshold Validator →</a>
+    <!-- 🔢 Version Bump Section (TES-OPS-004) -->
+    <div class="section" style="
+      background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+      border-left: 6px solid #ffc107;
+      margin-bottom: 30px;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(255, 193, 7, 0.2);
+    ">
+      <h3 style="
+        color: #856404;
+        margin: 0 0 1rem 0;
+        font-size: 1.4em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 700;
+      ">
+        <span>🔢</span>
+        <span>Version Management</span>
+      </h3>
+      <p style="margin: 0 0 1rem 0; color: #856404; font-size: 0.95em;">
+        Current version: <strong style="font-size: 1.1em; color: #856404;">v${safeVersion}</strong>
+      </p>
+      <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+        <select id="bumpType" style="
+          padding: 0.625rem 1rem;
+          border: 2px solid #ffc107;
+          border-radius: 8px;
+          background: white;
+          color: #856404;
+          font-weight: 600;
+          font-size: 0.95em;
+          cursor: pointer;
+        ">
+          <option value="patch">Patch (x.x.X)</option>
+          <option value="minor">Minor (x.X.0)</option>
+          <option value="major">Major (X.0.0)</option>
+        </select>
+        <button onclick="bumpVersion()" style="
+          padding: 0.625rem 1.5rem;
+          background: linear-gradient(135deg, #ffc107 0%, #ffb300 100%);
+          color: #856404;
+          border: none;
+          border-radius: 8px;
+          font-weight: 700;
+          font-size: 0.95em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(255, 193, 7, 0.3);
+        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(255, 193, 7, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(255, 193, 7, 0.3)'">
+          🚀 Bump Version
+        </button>
+        <div id="bumpResult" style="
+          margin-left: auto;
+          padding: 0.5rem 1rem;
+          border-radius: 8px;
+          font-size: 0.9em;
+          font-weight: 600;
+          display: none;
+        "></div>
       </div>
     </div>
     
-    <div class="section">
-      <h2>📡 API Endpoints</h2>
-      
-      <h3>Worker API <span id="worker-api-status" class="status inactive">Not Running</span></h3>
-      <ul>
-        ${workerEndpoints}
-      </ul>
-      
-      <h3>Spline API <span id="spline-api-status" class="status active">Port 3001</span></h3>
-      <ul>
-        ${splineEndpoints}
-      </ul>
-      
-      <h3>Dev API <span id="dev-api-status" class="status active">Port 3002</span></h3>
-      <ul>
-        ${devEndpoints}
-      </ul>
-      
-      <h3>Tension Mapping <span class="status active">Port 3002</span></h3>
-      <ul>
-        <li><code>GET, POST</code> <a href="/api/tension/map?conflict=1.0&entropy=0.0&tension=0.0" target="_blank">/api/tension/map</a> - Tension mapping API (single)</li>
-        <li><code>GET, POST</code> <a href="/api/tension/batch" target="_blank">/api/tension/batch</a> - Tension mapping API (batch)</li>
-        <li><code>GET</code> <a href="/api/tension/health" target="_blank">/api/tension/health</a> - Health check</li>
-        <li><code>GET</code> <a href="/api/tension/help" target="_blank">/api/tension/help</a> - 📖 Help documentation (CLI, API, Portal)</li>
-        <li><code>GET</code> <a href="/tension" target="_blank">/tension</a> - 🎨 Tension mapping visualization</li>
-      </ul>
-      
-      <h3>Enhanced CLI Features <span class="status active">v1.4.2</span></h3>
-      <ul>
-        <li><code>GET</code> <a href="/api/gauge/womens-sports?oddsSkew=0.92&volumeVelocity=47000&volatilityEntropy=0.41" target="_blank">/api/gauge/womens-sports</a> - WNBATOR 5D tensor gauge</li>
-        <li><code>GET</code> <a href="/api/ai/maparse?prices=100,102,105,110,118" target="_blank">/api/ai/maparse</a> - AI auto-maparse curve detection</li>
-        <li><code>GET</code> <a href="/api/validate/threshold?threshold=0.7-.0012" target="_blank">/api/validate/threshold</a> - Threshold validator (auto-corrects arithmetic)</li>
-      </ul>
-      
-      <h3>🌑 Shadow WebSocket Server <span class="status active">Port 3003</span></h3>
-      <ul>
-        <li><code>WS</code> <a href="ws://localhost:3003/ws/shadow/TIER_4_MANUAL_SHADOW" target="_blank">ws://localhost:3003/ws/shadow/TIER_4_MANUAL_SHADOW</a> - Shadow market WebSocket (JSON)</li>
-        <li><code>WS</code> <a href="ws://localhost:3003/ws/shadow/TIER_X_MONSTER" target="_blank">ws://localhost:3003/ws/shadow/TIER_X_MONSTER</a> - HFT tier WebSocket (Binary)</li>
-        <li><code>GET</code> <a href="http://localhost:3003/health" target="_blank">http://localhost:3003/health</a> - Health check</li>
-        <li><code>GET</code> <a href="http://localhost:3003/stats" target="_blank">http://localhost:3003/stats</a> - Server statistics</li>
-      </ul>
-      <div class="shadow-controls" style="margin-top: 15px; padding: 15px; background: #1a1a1a; border-radius: 8px; border-left: 4px solid #ffaa00;">
-        <h4 style="color: #ffaa00; margin-top: 0;">Shadow Market Controls</h4>
-        <button onclick="connectShadowWS('TIER_4_MANUAL_SHADOW')" style="background: #ffaa00; color: #1a1a1a; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 10px;">Connect Manual</button>
-        <button onclick="connectShadowWS('TIER_X_MONSTER')" style="background: #667eea; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: 600; margin-right: 10px;">Connect HFT</button>
-        <div id="shadow-status" style="margin-top: 10px; color: #888; font-size: 0.9em;">Disconnected</div>
-        <div id="shadow-ticker" style="margin-top: 10px; max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85em; color: #ccc;"></div>
+    <!-- 📦 Component Versions Summary Section (TES-OPS-004.A.3) -->
+    <div class="section" style="
+      background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+      border-left: 6px solid #2196f3;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(33, 150, 243, 0.2);
+    ">
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+        <h2 style="
+          color: #1976d2;
+          font-size: 2em;
+          margin: 0;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          text-shadow: 0 2px 8px rgba(25, 118, 210, 0.15);
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        ">
+          <span style="font-size: 1.2em;">📦</span>
+          <span>Component Versions</span>
+        </h2>
+        <span style="
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem 0.75rem;
+          background: rgba(33, 150, 243, 0.1);
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #1976d2;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">${Object.keys(safeComponentVersions).length} Components</span>
       </div>
+      
+      <div style="
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+      ">
+        ${Object.entries(safeComponentVersions).map(([name, version]) => {
+          const isCritical = name === 'Endpoint Checker';
+          const isNew = ['Spline API', 'Validation Threshold', 'Endpoint Checker'].includes(name);
+          const criticalIcon = isCritical ? '<span style="font-size: 1.1em;">🔍</span>' : '';
+          const newBadge = isNew ? '<span style="display: inline-block; padding: 0.1rem 0.4rem; background: #ffc107; color: #856404; border-radius: 4px; font-size: 0.65em; font-weight: 700; text-transform: uppercase; margin-left: 0.5rem;">NEW</span>' : '';
+          const borderColor = isCritical ? '#dc3545' : isNew ? '#ffc107' : '#e0e0e0';
+          const versionBg = isCritical ? 'linear-gradient(135deg, #dc3545 0%, #c82333 100%)' : 'rgba(102, 126, 234, 0.1)';
+          const versionColor = isCritical ? 'white' : '#667eea';
+          const versionTextColor = isCritical ? '#dc3545' : '#667eea';
+          const pulseAnimation = isCritical ? 'box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3); animation: pulse 2s ease-in-out infinite;' : '';
+          
+          return `
+            <div style="
+              background: white;
+              padding: 1rem 1.25rem;
+              border-radius: 10px;
+              border: 2px solid ${borderColor};
+              transition: all 0.3s ease;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'">
+              <div style="flex: 1;">
+                <div style="
+                  font-weight: 700;
+                  color: #333;
+                  font-size: 1em;
+                  margin-bottom: 0.25rem;
+                  display: flex;
+                  align-items: center;
+                  gap: 0.5rem;
+                ">
+                  ${criticalIcon}
+                  <span>${escapeHtml(name)}</span>
+                  ${newBadge}
+                </div>
+              </div>
+              <div style="
+                font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+                font-weight: 700;
+                color: ${versionTextColor};
+                font-size: 1.1em;
+                padding: 0.35rem 0.75rem;
+                background: ${versionBg};
+                color: ${versionColor};
+                border-radius: 8px;
+                ${pulseAnimation}
+              ">v${version}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      
+      <p style="
+        margin-top: 1.5rem;
+        color: #1976d2;
+        font-size: 0.9em;
+        font-style: italic;
+        text-align: center;
+      ">
+        All component versions are managed by <code style="background: rgba(33, 150, 243, 0.1); padding: 0.2rem 0.4rem; border-radius: 4px;">scripts/bump.ts</code> utility
+      </p>
     </div>
     
-    <div class="section">
-      <h2>🎨 Color System</h2>
-      <div class="grid">
-        <div class="card">
-          <h4>📊 Color Usage</h4>
-          <p><strong>Build-time validated colors</strong></p>
-          <div class="stat-display">
-            <div class="stat-item">
-              <span class="stat-label">Total Colors:</span>
-              <span class="stat-value" id="color-total">Loading...</span>
+    <!-- 🚀 Glossary Showcase Section -->
+    <div class="section" style="
+      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      border-left: 6px solid #4caf50;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(76, 175, 80, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      <!-- Background pattern -->
+      <div style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        opacity: 0.05;
+        background-image: 
+          radial-gradient(circle at 10% 20%, rgba(76, 175, 80, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 90% 80%, rgba(76, 175, 80, 0.2) 0%, transparent 50%);
+        pointer-events: none;
+      "></div>
+      
+      <div style="position: relative; z-index: 1;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+          <h2 style="
+            color: #2e7d32;
+            font-size: 2em;
+            margin: 0;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            text-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span style="font-size: 1.2em;">📚</span>
+            <span>Enhanced Betting Glossary${versionDisplay(safeComponentVersions['Betting Glossary'])}</span>
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              padding: 0.25rem 0.75rem;
+              background: rgba(76, 175, 80, 0.2);
+              border-radius: 12px;
+              font-size: 0.75rem;
+              font-weight: 700;
+              color: #2e7d32;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-left: 0.5rem;
+            ">NEW</span>
+          </h2>
+        </div>
+        <p style="
+          margin-bottom: 1.5rem;
+          color: #555;
+          font-size: 1.1em;
+          font-weight: 500;
+          line-height: 1.6;
+        ">Comprehensive betting terminology with enhanced search, autocomplete, term relationships, category filtering, sorting, and copy functionality. Built with Bun's native HTML imports, React/JSX, HTMLRewriter for SSR, Bun.file() for file operations, Bun.serve() routing, TypeScript strict mode, and Hot Module Replacement (HMR).</p>
+        
+        <!-- Bun Native Features Showcase -->
+        <div style="
+          background: rgba(255,255,255,0.9);
+          padding: 1.5rem;
+          border-radius: 10px;
+          margin-bottom: 1.5rem;
+          border: 2px solid #667eea;
+        ">
+          <h3 style="
+            color: #667eea;
+            margin: 0 0 1rem 0;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>⚡</span>
+            <span>Bun Native Features Used</span>
+          </h3>
+          <div style="
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+          ">
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">📦 HTML Imports</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Automatic asset bundling with HMR
+              </div>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">Used:</span>
-              <span class="stat-value" id="color-used">Loading...</span>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">🔄 HTMLRewriter</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Server-side template injection
+              </div>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">Reserved:</span>
-              <span class="stat-value" id="color-unused" style="color: #fd7e14;">Loading...</span>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">⚛️ JSX/React</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Native JSX transform support
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">📁 Bun.file()</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Zero-copy file operations
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">🚀 Bun.serve()</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Native HTTP server & routing
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">🔥 HMR</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Hot Module Replacement
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">📘 TypeScript</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                Strict mode type safety
+              </div>
+            </div>
+            <div style="padding: 0.75rem; background: #f8f9fa; border-radius: 6px;">
+              <strong style="color: #667eea;">⚡ Performance</strong>
+              <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                SIMD-accelerated operations
+              </div>
             </div>
           </div>
-          <div class="card-actions">
-            <a href="/color-palette.html" target="_blank" class="btn-link">🎨 View Palette →</a>
-            <a href="#" onclick="loadColorReport(); return false;" class="btn-link">📊 View Report →</a>
+        </div>
+        
+        <!-- Feature Highlights -->
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1.5rem;
+        ">
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">🔍</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Relevance Ranking</div>
+            <div style="font-size: 0.9em; color: #666;">Smart search with scoring</div>
           </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">⚡</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Autocomplete</div>
+            <div style="font-size: 0.9em; color: #666;">Instant suggestions</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">🔗</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Term Relationships</div>
+            <div style="font-size: 0.9em; color: #666;">Discover connections</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">🚀</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">SSR + React</div>
+            <div style="font-size: 0.9em; color: #666;">Bun native features</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">🎯</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Category Filters</div>
+            <div style="font-size: 0.9em; color: #666;">6 filter categories</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">📋</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Copy & Sort</div>
+            <div style="font-size: 0.9em; color: #666;">Copy terms, sort results</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">⌨️</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Keyboard Shortcuts</div>
+            <div style="font-size: 0.9em; color: #666;">Press / to focus</div>
+          </div>
+          <div style="
+            background: rgba(255,255,255,0.7);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid #4caf50;
+          ">
+            <div style="font-size: 1.5em; margin-bottom: 0.5rem;">📱</div>
+            <div style="font-weight: 700; color: #2e7d32; margin-bottom: 0.25rem;">Mobile Responsive</div>
+            <div style="font-size: 0.9em; color: #666;">Optimized for all devices</div>
+          </div>
+        </div>
+        
+        <!-- Primary Action -->
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 1rem;
+        ">
+          <a href="/glossary" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 1.75rem;
+            background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05em;
+            box-shadow: 0 4px 20px rgba(76, 175, 80, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+          " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 6px 25px rgba(76, 175, 80, 0.5)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 20px rgba(76, 175, 80, 0.4)'">
+            <span style="font-size: 1.2em;">📚</span>
+            <span>Open Enhanced Glossary</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+          <a href="/api/glossary/search" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 1.75rem;
+            background: white;
+            color: #4caf50;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05em;
+            border: 2.5px solid #4caf50;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(76, 175, 80, 0.2);
+          " onmouseover="this.style.transform='translateY(-3px)'; this.style.background='#4caf50'; this.style.color='white'; this.style.boxShadow='0 6px 25px rgba(76, 175, 80, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.background='white'; this.style.color='#4caf50'; this.style.boxShadow='0 2px 10px rgba(76, 175, 80, 0.2)'">
+            <span style="font-size: 1.2em;">🔗</span>
+            <span>View API</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
         </div>
       </div>
     </div>
     
-    <div class="section">
-      <h2>📚 Bookmaker Registry</h2>
-      <div class="grid">
-        <div class="card">
-          <h4>📊 Registry Overview</h4>
-          <p><strong>44 bookmakers across 6 tiers</strong></p>
-          <div class="stat-display">
-            <div class="stat-item">
-              <span class="stat-label">Total Bookmakers:</span>
-              <span class="stat-value" id="registry-total">Loading...</span>
+    <div class="section" style="
+      background: linear-gradient(135deg, #fff5e6 0%, #ffe0cc 100%);
+      border-left: 6px solid #fd7e14;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(253, 126, 20, 0.15);
+      position: relative;
+      overflow: hidden;
+    ">
+      <!-- Background pattern -->
+      <div style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        opacity: 0.05;
+        background-image: 
+          radial-gradient(circle at 10% 20%, rgba(253, 126, 20, 0.3) 0%, transparent 50%),
+          radial-gradient(circle at 90% 80%, rgba(253, 126, 20, 0.2) 0%, transparent 50%);
+        pointer-events: none;
+      "></div>
+      
+      <div style="position: relative; z-index: 1;">
+        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;">
+          <h2 style="
+            color: #fd7e14;
+            font-size: 2em;
+            margin: 0;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            text-shadow: 0 2px 8px rgba(253, 126, 20, 0.2);
+          ">🎨 Quick Access: Enhanced CLI Apocalypse v1.4.2</h2>
+          <span style="
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            background: rgba(253, 126, 20, 0.15);
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #fd7e14;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          ">Active</span>
+        </div>
+        <p style="
+          margin-bottom: 1.5rem;
+          color: #666;
+          font-size: 1.1em;
+          font-weight: 500;
+          line-height: 1.6;
+        ">Interactive edge tempering visualization + WNBATOR gauge + AI maparse + Threshold validator</p>
+        
+        <!-- Primary Actions Row -->
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 1rem;
+          margin-bottom: 1rem;
+        ">
+          <a href="/tension" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 1.75rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05em;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid transparent;
+          " onmouseover="this.style.transform='translateY(-3px)'; this.style.boxShadow='0 6px 25px rgba(102, 126, 234, 0.5)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 20px rgba(102, 126, 234, 0.4)'">
+            <span style="font-size: 1.2em;">🎨</span>
+            <span>Tension Visualizer</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+          <a href="/api/tension/map?conflict=1.0&entropy=0.0&tension=0.0" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 1rem 1.75rem;
+            background: white;
+            color: #667eea;
+            text-decoration: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 1.05em;
+            border: 2.5px solid #667eea;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 10px rgba(102, 126, 234, 0.2);
+          " onmouseover="this.style.transform='translateY(-3px)'; this.style.background='#667eea'; this.style.color='white'; this.style.boxShadow='0 6px 25px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.background='white'; this.style.color='#667eea'; this.style.boxShadow='0 2px 10px rgba(102, 126, 234, 0.2)'">
+            <span style="font-size: 1.2em;">🔗</span>
+            <span>Tension API</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+        </div>
+        
+        <!-- Secondary Actions Row -->
+        <div style="
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 0.875rem;
+        ">
+          <a href="/api/gauge/womens-sports?oddsSkew=0.92&volumeVelocity=47000&volatilityEntropy=0.41&timeDecay=323&momentumCurvature=0.89" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95em;
+            box-shadow: 0 3px 15px rgba(40, 167, 69, 0.35);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1.5px solid transparent;
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 20px rgba(40, 167, 69, 0.45)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 15px rgba(40, 167, 69, 0.35)'">
+            <span style="font-size: 1.1em;">📊</span>
+            <span>WNBATOR Gauge${versionDisplay(safeComponentVersions['Gauge API'])}</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+          <a href="/api/ai/maparse?prices=100,102,105,110,118" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95em;
+            box-shadow: 0 3px 15px rgba(23, 162, 184, 0.35);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1.5px solid transparent;
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 20px rgba(23, 162, 184, 0.45)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 15px rgba(23, 162, 184, 0.35)'">
+            <span style="font-size: 1.1em;">🤖</span>
+            <span>AI Maparse${versionDisplay(safeComponentVersions['AI Maparse'])}</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+          <a href="/api/validate/threshold?threshold=0.7-.0012" target="_blank" style="
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+            color: #333;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.95em;
+            box-shadow: 0 3px 15px rgba(255, 193, 7, 0.35);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1.5px solid transparent;
+          " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 20px rgba(255, 193, 7, 0.45)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 15px rgba(255, 193, 7, 0.35)'">
+            <span style="font-size: 1.1em;">✅</span>
+            <span>Threshold Validator${versionDisplay(safeComponentVersions['Validation Threshold'])}</span>
+            <span style="opacity: 0.8;">→</span>
+          </a>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section" style="
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-left: 6px solid #667eea;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+    ">
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+        <h2 style="
+          color: #667eea;
+          font-size: 2em;
+          margin: 0;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          text-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+        ">📡 API Endpoints</h2>
+        <span style="
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem 0.75rem;
+          background: rgba(102, 126, 234, 0.1);
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #667eea;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">${endpoints.dev.endpoints.length + endpoints.worker.endpoints.length + endpoints.spline.endpoints.length} Total</span>
+      </div>
+      
+      <!-- Worker API Section -->
+      <div style="
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #e0e0e0;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      " onmouseover="this.style.borderColor='#dc3545'; this.style.boxShadow='0 4px 12px rgba(220, 53, 69, 0.15)'" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #333;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>👷</span>
+            <span>Worker API${versionDisplay(safeComponentVersions['Worker Management'])}</span>
+          </h3>
+          <span id="worker-api-status" class="status inactive" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #dc3545;
+            color: white;
+          ">Not Running</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          ${workerEndpoints}
+        </ul>
+      </div>
+      
+      <!-- Spline API Section -->
+      <div style="
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #e0e0e0;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      " onmouseover="this.style.borderColor='#28a745'; this.style.boxShadow='0 4px 12px rgba(40, 167, 69, 0.15)'" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #333;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>📈</span>
+            <span>Spline API${versionDisplay(safeComponentVersions['Spline API'])}</span>
+          </h3>
+          <span id="spline-api-status" class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #28a745;
+            color: white;
+          ">Port 3001</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          ${splineEndpoints}
+        </ul>
+      </div>
+      
+      <!-- Dev API Section -->
+      <div style="
+        background: white;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #e0e0e0;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      " onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.15)'" onmouseout="this.style.borderColor='#e0e0e0'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #333;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>⚙️</span>
+            <span>Dev API${versionDisplay(safeComponentVersions['Dev Server'])}</span>
+            ${safeComponentVersions['Endpoint Checker'] ? `<span style="
+              display: inline-flex;
+              align-items: center;
+              padding: 0.35rem 0.75rem;
+              background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+              border-radius: 8px;
+              font-size: 0.85em;
+              font-weight: 800;
+              color: white;
+              font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+              margin-left: 0.75rem;
+              box-shadow: 0 3px 10px rgba(220, 53, 69, 0.4);
+              border: 2px solid rgba(255, 255, 255, 0.3);
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              animation: pulse 2s ease-in-out infinite;
+            ">🔍 Endpoint Checker v${safeComponentVersions['Endpoint Checker']}</span>` : ''}
+          </h3>
+          <span id="dev-api-status" class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #28a745;
+            color: white;
+          ">Port 3002</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          ${devEndpoints}
+        </ul>
+      </div>
+      
+      <!-- Tension Mapping Section -->
+      <div style="
+        background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #667eea;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+      ">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #667eea;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>🎨</span>
+            <span>Tension Mapping${versionDisplay(safeComponentVersions['Tension API'])}</span>
+          </h3>
+          <span class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #28a745;
+            color: white;
+          ">Port 3002</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(102, 126, 234, 0.2);">
+            <code style="background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET, POST</code>
+            <a href="/api/tension/map?conflict=1.0&entropy=0.0&tension=0.0" target="_blank" style="margin-left: 0.75rem; color: #667eea; text-decoration: none; font-weight: 500;">/api/tension/map</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- Tension mapping API (single)</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(102, 126, 234, 0.2);">
+            <code style="background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET, POST</code>
+            <a href="/api/tension/batch" target="_blank" style="margin-left: 0.75rem; color: #667eea; text-decoration: none; font-weight: 500;">/api/tension/batch</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- Tension mapping API (batch)</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(102, 126, 234, 0.2);">
+            <code style="background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/tension/health" target="_blank" style="margin-left: 0.75rem; color: #667eea; text-decoration: none; font-weight: 500;">/api/tension/health</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- Health check</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(102, 126, 234, 0.2);">
+            <code style="background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/tension/help" target="_blank" style="margin-left: 0.75rem; color: #667eea; text-decoration: none; font-weight: 500;">/api/tension/help</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- 📖 Help documentation (CLI, API, Portal)</span>
+          </li>
+          <li style="padding: 0.75rem 0;">
+            <code style="background: rgba(102, 126, 234, 0.1); color: #667eea; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/tension" target="_blank" style="margin-left: 0.75rem; color: #667eea; text-decoration: none; font-weight: 500;">/tension</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- 🎨 Tension mapping visualization</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- Enhanced CLI Features Section -->
+      <div style="
+        background: linear-gradient(135deg, #fff5e6 0%, #ffe0cc 100%);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #fd7e14;
+        box-shadow: 0 2px 8px rgba(253, 126, 20, 0.1);
+      ">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #fd7e14;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>🚀</span>
+            <span>Enhanced CLI Features</span>
+          </h3>
+          <span class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #fd7e14;
+            color: white;
+          ">v1.4.2</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(253, 126, 20, 0.2);">
+            <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/gauge/womens-sports?oddsSkew=0.92&volumeVelocity=47000&volatilityEntropy=0.41" target="_blank" style="margin-left: 0.75rem; color: #fd7e14; text-decoration: none; font-weight: 500;">/api/gauge/womens-sports</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- WNBATOR 5D tensor gauge</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(253, 126, 20, 0.2);">
+            <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/ai/maparse?prices=100,102,105,110,118" target="_blank" style="margin-left: 0.75rem; color: #fd7e14; text-decoration: none; font-weight: 500;">/api/ai/maparse</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- AI auto-maparse curve detection</span>
+          </li>
+          <li style="padding: 0.75rem 0;">
+            <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/validate/threshold?threshold=0.7-.0012" target="_blank" style="margin-left: 0.75rem; color: #fd7e14; text-decoration: none; font-weight: 500;">/api/validate/threshold</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- Threshold validator (auto-corrects arithmetic)</span>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- Shadow WebSocket Server Section -->
+      <div style="
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #ffaa00;
+        box-shadow: 0 2px 8px rgba(255, 170, 0, 0.2);
+      ">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #ffaa00;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>🌑</span>
+            <span>Shadow WebSocket Server</span>
+          </h3>
+          <span class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #ffaa00;
+            color: #1a1a1a;
+          ">Port 3003</span>
+        </div>
+        <ul style="list-style: none; padding: 0; margin: 0 0 1rem 0;">
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255, 170, 0, 0.2);">
+            <code style="background: rgba(255, 170, 0, 0.2); color: #ffaa00; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">WS</code>
+            <a href="#" onclick="navigator.clipboard.writeText('ws://localhost:3003/ws/shadow/TIER_4_MANUAL_SHADOW').then(() => alert('WebSocket URL copied!')); return false;" style="margin-left: 0.75rem; color: #ffaa00; text-decoration: none; font-weight: 500;">ws://localhost:3003/ws/shadow/TIER_4_MANUAL_SHADOW</a>
+            <span style="margin-left: 0.5rem; color: #ccc; font-size: 0.9em;">- Shadow market WebSocket (JSON)</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255, 170, 0, 0.2);">
+            <code style="background: rgba(255, 170, 0, 0.2); color: #ffaa00; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">WS</code>
+            <a href="#" onclick="navigator.clipboard.writeText('ws://localhost:3003/ws/shadow/TIER_X_MONSTER').then(() => alert('WebSocket URL copied!')); return false;" style="margin-left: 0.75rem; color: #ffaa00; text-decoration: none; font-weight: 500;">ws://localhost:3003/ws/shadow/TIER_X_MONSTER</a>
+            <span style="margin-left: 0.5rem; color: #ccc; font-size: 0.9em;">- HFT tier WebSocket (Binary)</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(255, 170, 0, 0.2);">
+            <code style="background: rgba(255, 170, 0, 0.2); color: #ffaa00; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="http://localhost:3003/health" target="_blank" style="margin-left: 0.75rem; color: #ffaa00; text-decoration: none; font-weight: 500;">http://localhost:3003/health</a>
+            <span style="margin-left: 0.5rem; color: #ccc; font-size: 0.9em;">- Health check</span>
+          </li>
+          <li style="padding: 0.75rem 0;">
+            <code style="background: rgba(255, 170, 0, 0.2); color: #ffaa00; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="http://localhost:3003/stats" target="_blank" style="margin-left: 0.75rem; color: #ffaa00; text-decoration: none; font-weight: 500;">http://localhost:3003/stats</a>
+            <span style="margin-left: 0.5rem; color: #ccc; font-size: 0.9em;">- Server statistics</span>
+          </li>
+        </ul>
+        <div class="shadow-controls" style="margin-top: 1rem; padding: 1rem; background: rgba(255, 170, 0, 0.1); border-radius: 8px; border-left: 4px solid #ffaa00;">
+          <h4 style="color: #ffaa00; margin-top: 0; margin-bottom: 0.75rem; font-size: 1.1em;">Shadow Market Controls</h4>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+            <button onclick="connectShadowWS('TIER_4_MANUAL_SHADOW')" style="
+              background: #ffaa00;
+              color: #1a1a1a;
+              border: none;
+              padding: 0.75rem 1.5rem;
+              border-radius: 8px;
+              cursor: pointer;
+              font-weight: 700;
+              font-size: 0.95em;
+              transition: all 0.2s ease;
+              box-shadow: 0 2px 8px rgba(255, 170, 0, 0.3);
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(255, 170, 0, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(255, 170, 0, 0.3)'">Connect Manual</button>
+            <button onclick="connectShadowWS('TIER_X_MONSTER')" style="
+              background: #667eea;
+              color: white;
+              border: none;
+              padding: 0.75rem 1.5rem;
+              border-radius: 8px;
+              cursor: pointer;
+              font-weight: 700;
+              font-size: 0.95em;
+              transition: all 0.2s ease;
+              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(102, 126, 234, 0.3)'">Connect HFT</button>
+          </div>
+          <div id="shadow-status" style="margin-top: 0.75rem; color: #888; font-size: 0.9em; font-weight: 500;">Disconnected</div>
+          <div id="shadow-ticker" style="margin-top: 0.75rem; max-height: 200px; overflow-y: auto; font-family: 'SF Mono', 'Monaco', monospace; font-size: 0.85em; color: #ccc; background: rgba(0,0,0,0.2); padding: 0.75rem; border-radius: 6px;"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section" style="
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
+      border-left: 6px solid #80FF80;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(128, 255, 128, 0.15);
+    ">
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+        <h2 style="
+          color: #80FF80;
+          font-size: 2em;
+          margin: 0;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          text-shadow: 0 2px 8px rgba(128, 255, 128, 0.2);
+        ">🎨 Color System</h2>
+        <span style="
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem 0.75rem;
+          background: rgba(128, 255, 128, 0.15);
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #4ade80;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">Build-Time Validated</span>
+      </div>
+      
+      <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem;">
+        <!-- Color Usage Card -->
+        <div class="card" style="
+          background: white;
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(128, 255, 128, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(128, 255, 128, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#80FF80'; this.style.boxShadow='0 4px 20px rgba(128, 255, 128, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(128, 255, 128, 0.3)'; this.style.boxShadow='0 2px 12px rgba(128, 255, 128, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(128, 255, 128, 0.1) 0%, rgba(74, 222, 128, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #4ade80;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">📊</span>
+            <span>Color Usage</span>
+          </h4>
+          <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Build-time validated colors</strong> with WCAG compliance
+          </p>
+          <div class="stat-display" style="
+            margin: 1.25rem 0;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #f0f4ff 100%);
+            border-radius: 10px;
+            border: 1px solid rgba(128, 255, 128, 0.2);
+            position: relative;
+            z-index: 1;
+          ">
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(128, 255, 128, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Total Colors:</span>
+              <span class="stat-value" id="color-total" style="
+                color: #80FF80;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">With Profiles:</span>
-              <span class="stat-value" id="registry-profiles">Loading...</span>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(128, 255, 128, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Used:</span>
+              <span class="stat-value" id="color-used" style="
+                color: #28a745;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">With Manifests:</span>
-              <span class="stat-value" id="registry-manifests">Loading...</span>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Reserved:</span>
+              <span class="stat-value" id="color-unused" style="
+                color: #fd7e14;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
           </div>
-          <div class="card-actions">
-            <a href="/registry" class="btn-link" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 24px; border-radius: 8px; font-weight: 700; display: inline-block; margin-top: 10px; text-decoration: none;">🎛️ Full Registry Dashboard →</a>
-            <a href="#" onclick="loadRegistry(); return false;" class="btn-link">📋 View Registry →</a>
-            <a href="/api/registry/bookmakers" target="_blank" class="btn-link">🔗 API JSON →</a>
+          <div class="card-actions" style="
+            margin-top: 1.25rem;
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+          ">
+            <a href="/color-palette.html" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #80FF80 0%, #4ade80 100%);
+              color: #0f172a;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(128, 255, 128, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(128, 255, 128, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(128, 255, 128, 0.3)'">
+              <span>🎨</span>
+              <span>View Palette</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="#" onclick="loadColorReport(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: white;
+              color: #80FF80;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              border: 2px solid #80FF80;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='#80FF80'; this.style.color='#0f172a'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='white'; this.style.color='#80FF80'; this.style.transform='translateY(0)'">
+              <span>📊</span>
+              <span>View Report</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
           </div>
         </div>
-        <div class="card">
-          <h4>🎛️ Registry Management</h4>
-          <p><strong>Feature flags & rollout controls</strong></p>
-          <p class="status-badge status-active">✅ Bun.SQL Integrated</p>
-          <ul style="list-style: none; padding: 0; margin: 10px 0;">
-            <li>✅ Feature flags (enabled, streaming, backfill, arbitrage, mlTraining)</li>
-            <li>✅ Rollout percentage (0-100%)</li>
-            <li>✅ User whitelist</li>
-            <li>✅ Region-based rollout</li>
-            <li>✅ Canary deployments</li>
+        
+        <!-- Color System Info Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(128, 255, 128, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(128, 255, 128, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#80FF80'; this.style.boxShadow='0 4px 20px rgba(128, 255, 128, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(128, 255, 128, 0.3)'; this.style.boxShadow='0 2px 12px rgba(128, 255, 128, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(128, 255, 128, 0.1) 0%, rgba(74, 222, 128, 0.05) 100%); border-radius: 0 0 60px 0;"></div>
+          <h4 style="
+            color: #4ade80;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">🛡️</span>
+            <span>System Features</span>
+          </h4>
+          <ul style="
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            position: relative;
+            z-index: 1;
+          ">
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>WCAG contrast validation</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Build-time hex validation</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Usage tracking system</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Type-safe color access</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Zero runtime cost</span>
+            </li>
           </ul>
-          <div class="card-actions">
-            <a href="/registry" class="btn-link" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 10px 20px; border-radius: 8px; font-weight: 600; display: inline-block; margin-top: 10px; text-decoration: none;">🎛️ Manage Registry →</a>
-            <a href="/api/bookmakers" target="_blank" class="btn-link">🔗 API JSON →</a>
+          <div style="
+            margin-top: 1.25rem;
+            padding: 1rem;
+            background: rgba(128, 255, 128, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #80FF80;
+            position: relative;
+            z-index: 1;
+          ">
+            <p style="margin: 0; color: #666; font-size: 0.9em; line-height: 1.6;">
+              <strong style="color: #4ade80;">Primary Color:</strong> Green-thin edge (#80FF80) from tension mapping
+            </p>
           </div>
         </div>
-        <div class="card">
-          <h4>🎯 Tier Distribution</h4>
-          <p><strong>Bookmakers by tier</strong></p>
-          <div class="stat-display" id="tier-distribution">
-            <div class="stat-item">Loading...</div>
+        
+        <!-- Color Palette Preview Card -->
+        <div class="card" style="
+          background: white;
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(128, 255, 128, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(128, 255, 128, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#80FF80'; this.style.boxShadow='0 4px 20px rgba(128, 255, 128, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(128, 255, 128, 0.3)'; this.style.boxShadow='0 2px 12px rgba(128, 255, 128, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(128, 255, 128, 0.1) 0%, rgba(74, 222, 128, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #4ade80;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">🎨</span>
+            <span>Quick Preview</span>
+          </h4>
+          <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            Primary color palette swatches
+          </p>
+          <div style="
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <div style="
+              background: linear-gradient(135deg, #80FF80 0%, #4ade80 100%);
+              height: 60px;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(128, 255, 128, 0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: #0f172a;
+              font-weight: 700;
+              font-size: 0.75em;
+              text-align: center;
+              padding: 0.5rem;
+            " title="Primary: #80FF80">Primary</div>
+            <div style="
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              height: 60px;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: 700;
+              font-size: 0.75em;
+              text-align: center;
+              padding: 0.5rem;
+            " title="Background: #667eea">BG</div>
+            <div style="
+              background: #28a745;
+              height: 60px;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: 700;
+              font-size: 0.75em;
+              text-align: center;
+              padding: 0.5rem;
+            " title="Success: #28a745">Success</div>
+            <div style="
+              background: #ef4444;
+              height: 60px;
+              border-radius: 8px;
+              box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: 700;
+              font-size: 0.75em;
+              text-align: center;
+              padding: 0.5rem;
+            " title="Live: #ef4444">Live</div>
           </div>
-          <div class="card-actions">
-            <a href="#" onclick="loadTiers(); return false;" class="btn-link">📊 View Tiers →</a>
-            <a href="/api/registry/tiers" target="_blank" class="btn-link">🔗 API JSON →</a>
-          </div>
-        </div>
-        <div class="card">
-          <h4>📁 RG Index Manifests</h4>
-          <p><strong>Ripgrep index skeletons</strong></p>
-          <p class="status-badge status-active">✅ Available</p>
-          <div class="card-actions">
-            <a href="#" onclick="loadManifests(); return false;" class="btn-link">📁 View Manifests →</a>
-            <a href="/api/registry/manifests/pinnacle" target="_blank" class="btn-link">🔗 Example API →</a>
-          </div>
-        </div>
-        <div class="card">
-          <h4>☁️ R2 Bucket Storage</h4>
-          <p><strong>Private-backed registry</strong></p>
-          <div class="stat-display">
-            <div class="stat-item">
-              <span class="stat-label">Bucket:</span>
-              <span class="stat-value" id="r2-bucket">Loading...</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Total Objects:</span>
-              <span class="stat-value" id="r2-objects">Loading...</span>
-            </div>
-          </div>
-          <div class="card-actions">
-            <a href="#" onclick="loadR2Registry(); return false;" class="btn-link">☁️ View R2 Bucket →</a>
-            <a href="/api/registry/r2" target="_blank" class="btn-link">🔗 R2 API →</a>
+          <div class="card-actions" style="position: relative; z-index: 1;">
+            <a href="/api/dev/colors" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(102, 126, 234, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(102, 126, 234, 0.3)'">
+              <span>🔗</span>
+              <span>API JSON</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
           </div>
         </div>
       </div>
     </div>
     
-    <div class="section">
-      <h2>🎯 Bet-Type Detection</h2>
-      <div class="grid">
-        <div class="card">
-          <h4>📊 Detection Overview</h4>
-          <p><strong>Comprehensive bet-type pattern detection</strong></p>
-          <div class="stat-display">
-            <div class="stat-item">
-              <span class="stat-label">Bet Types:</span>
-              <span class="stat-value" id="bet-type-total">Loading...</span>
+    <div class="section" style="
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-left: 6px solid #667eea;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+    ">
+      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 style="
+          color: #667eea;
+          font-size: 2em;
+          margin: 0;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          text-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+        ">📚 Bookmaker Registry</h2>
+        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+          <span style="
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1.25rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 16px;
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 16px rgba(102, 126, 234, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+          ">
+            <span style="font-size: 1.1em; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));">📊</span>
+            <span style="font-family: 'SF Mono', 'Monaco', monospace; letter-spacing: 1.5px;">44</span>
+            <span style="opacity: 0.9;">BOOKMAKERS</span>
+          </span>
+          <span style="
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1.25rem;
+            background: linear-gradient(135deg, #fd7e14 0%, #ff9800 100%);
+            border-radius: 16px;
+            font-size: 0.9rem;
+            font-weight: 900;
+            color: white;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 4px 16px rgba(253, 126, 20, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+          ">
+            <span style="font-size: 1.1em; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));">🎯</span>
+            <span style="font-family: 'SF Mono', 'Monaco', monospace; letter-spacing: 1.5px;">6</span>
+            <span style="opacity: 0.9;">TIERS</span>
+          </span>
+        </div>
+      </div>
+      
+      <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem;">
+        <!-- Registry Overview Card -->
+        <div class="card" style="
+          background: white;
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(102, 126, 234, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 4px 20px rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(102, 126, 234, 0.3)'; this.style.boxShadow='0 2px 12px rgba(102, 126, 234, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #667eea;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">📊</span>
+            <span>Registry Overview</span>
+          </h4>
+          <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>44 bookmakers across 6 tiers</strong>
+          </p>
+          <div class="stat-display" style="
+            margin: 1.25rem 0;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #f0f4ff 100%);
+            border-radius: 10px;
+            border: 1px solid rgba(102, 126, 234, 0.2);
+            position: relative;
+            z-index: 1;
+          ">
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(102, 126, 234, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Total Bookmakers:</span>
+              <span class="stat-value" id="registry-total" style="
+                color: #667eea;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">Patterns Detected:</span>
-              <span class="stat-value" id="bet-type-patterns">Loading...</span>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(102, 126, 234, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">With Profiles:</span>
+              <span class="stat-value" id="registry-profiles" style="
+                color: #28a745;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-label">RG Compliant:</span>
-              <span class="stat-value" id="bet-type-rg-compliant">Loading...</span>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">With Manifests:</span>
+              <span class="stat-value" id="registry-manifests" style="
+                color: #fd7e14;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
             </div>
           </div>
-          <div class="card-actions">
-            <a href="#" onclick="loadBetTypeStats(); return false;" class="btn-link">📊 View Stats →</a>
-            <a href="/api/bet-type/stats" target="_blank" class="btn-link">🔗 API JSON →</a>
+          <div class="card-actions" style="
+            margin-top: 1.25rem;
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 1;
+          ">
+            <a href="/registry" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(102, 126, 234, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(102, 126, 234, 0.3)'">
+              <span>🎛️</span>
+              <span>Full Dashboard</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="#" onclick="loadRegistry(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: white;
+              color: #667eea;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              border: 2px solid #667eea;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='#667eea'; this.style.color='white'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='white'; this.style.color='#667eea'; this.style.transform='translateY(0)'">
+              <span>📋</span>
+              <span>View Registry</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/registry/bookmakers" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: rgba(102, 126, 234, 0.1);
+              color: #667eea;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='rgba(102, 126, 234, 0.1)'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>API JSON</span>
+            </a>
           </div>
         </div>
-        <div class="card">
-          <h4>🔍 Detection Types</h4>
-          <p><strong>Supported bet types</strong></p>
-          <ul style="list-style: none; padding: 0; margin: 10px 0;">
-            <li>✅ Team Totals</li>
-            <li>✅ Parlays & Same-Game Parlays</li>
-            <li>✅ Teasers</li>
-            <li>✅ Bought Points</li>
-            <li>✅ Live & Pregame Markets</li>
+        
+        <!-- Registry Management Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(40, 167, 69, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(40, 167, 69, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#28a745'; this.style.boxShadow='0 4px 20px rgba(40, 167, 69, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(40, 167, 69, 0.3)'; this.style.boxShadow='0 2px 12px rgba(40, 167, 69, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(32, 201, 151, 0.05) 100%); border-radius: 0 0 60px 0;"></div>
+          <h4 style="
+            color: #28a745;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">🎛️</span>
+            <span>Registry Management</span>
+          </h4>
+          <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Feature flags & rollout controls</strong>
+          </p>
+          <div style="
+            margin: 1rem 0;
+            padding: 0.75rem 1rem;
+            background: rgba(40, 167, 69, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #28a745;
+            position: relative;
+            z-index: 1;
+          ">
+            <p class="status-badge status-active" style="margin: 0; color: #28a745; font-weight: 700; font-size: 0.9em;">✅ Bun.SQL Integrated</p>
+          </div>
+          <ul style="
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+            position: relative;
+            z-index: 1;
+          ">
+            <li style="padding: 0.5rem 0; color: #666; font-size: 0.9em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Feature flags (enabled, streaming, backfill, arbitrage, mlTraining)</span>
+            </li>
+            <li style="padding: 0.5rem 0; color: #666; font-size: 0.9em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Rollout percentage (0-100%)</span>
+            </li>
+            <li style="padding: 0.5rem 0; color: #666; font-size: 0.9em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>User whitelist & region-based rollout</span>
+            </li>
+            <li style="padding: 0.5rem 0; color: #666; font-size: 0.9em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700;">✅</span>
+              <span>Canary deployments</span>
+            </li>
           </ul>
-          <div class="card-actions">
-            <a href="#" onclick="loadBetTypeDetection(); return false;" class="btn-link">🔍 Test Detection →</a>
+          <div class="card-actions" style="position: relative; z-index: 1;">
+            <a href="/registry" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(40, 167, 69, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(40, 167, 69, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(40, 167, 69, 0.3)'">
+              <span>🎛️</span>
+              <span>Manage Registry</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/bookmakers" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: white;
+              color: #28a745;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              border: 2px solid #28a745;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='#28a745'; this.style.color='white'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='white'; this.style.color='#28a745'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>API JSON</span>
+            </a>
           </div>
         </div>
-        <div class="card">
-          <h4>🛡️ RG Integration</h4>
-          <p><strong>Responsible Gaming compliance</strong></p>
-          <p class="status-badge status-active">✅ RG Index Integrated</p>
-          <div class="card-actions">
-            <a href="#" onclick="loadRGCompliance(); return false;" class="btn-link">🛡️ View RG Status →</a>
+        
+        <!-- Tier Distribution Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #ffffff 0%, #fff5e6 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(253, 126, 20, 0.4);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(253, 126, 20, 0.15);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#fd7e14'; this.style.boxShadow='0 4px 20px rgba(253, 126, 20, 0.3)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(253, 126, 20, 0.4)'; this.style.boxShadow='0 2px 12px rgba(253, 126, 20, 0.15)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 80px; height: 80px; background: linear-gradient(135deg, rgba(253, 126, 20, 0.15) 0%, rgba(255, 152, 0, 0.08) 100%); border-radius: 0 12px 0 80px;"></div>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; position: relative; z-index: 1;">
+            <h4 style="
+              color: #fd7e14;
+              margin: 0;
+              font-size: 1.3em;
+              font-weight: 700;
+              display: flex;
+              align-items: center;
+              gap: 0.5rem;
+            ">
+              <span style="font-size: 1.2em;">🎯</span>
+              <span>Tier Distribution</span>
+            </h4>
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.375rem;
+              padding: 0.375rem 0.75rem;
+              background: rgba(253, 126, 20, 0.15);
+              border-radius: 12px;
+              font-size: 0.75rem;
+              font-weight: 700;
+              color: #fd7e14;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              border: 1px solid rgba(253, 126, 20, 0.3);
+            ">
+              <span style="font-family: 'SF Mono', 'Monaco', monospace;">6</span>
+              <span>Tiers</span>
+            </span>
+          </div>
+          
+          <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong style="color: #fd7e14;">Bookmakers by tier</strong> • Classification & distribution
+          </p>
+          
+          <!-- Tier Breakdown -->
+          <div style="
+            margin: 1.25rem 0;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #fff5e6 0%, #ffe0cc 100%);
+            border-radius: 10px;
+            border: 1px solid rgba(253, 126, 20, 0.25);
+            position: relative;
+            z-index: 1;
+          ">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
+              <div style="
+                padding: 0.75rem;
+                background: rgba(102, 126, 234, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #667eea;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #667eea; font-weight: 700; font-size: 0.85em;">TIER 1</span>
+                  <span style="color: #667eea; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-1-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">Sharp Books</div>
+              </div>
+              
+              <div style="
+                padding: 0.75rem;
+                background: rgba(40, 167, 69, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #28a745;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #28a745; font-weight: 700; font-size: 0.85em;">TIER 2</span>
+                  <span style="color: #28a745; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-2-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">Premium Books</div>
+              </div>
+              
+              <div style="
+                padding: 0.75rem;
+                background: rgba(253, 126, 20, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #fd7e14;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #fd7e14; font-weight: 700; font-size: 0.85em;">TIER 3</span>
+                  <span style="color: #fd7e14; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-3-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">US Recreational</div>
+              </div>
+              
+              <div style="
+                padding: 0.75rem;
+                background: rgba(23, 162, 184, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #17a2b8;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #17a2b8; font-weight: 700; font-size: 0.85em;">TIER 4</span>
+                  <span style="color: #17a2b8; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-4-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">Manual Shadow</div>
+              </div>
+              
+              <div style="
+                padding: 0.75rem;
+                background: rgba(118, 75, 162, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #764ba2;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #764ba2; font-weight: 700; font-size: 0.85em;">TIER 5</span>
+                  <span style="color: #764ba2; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-5-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">Specialized</div>
+              </div>
+              
+              <div style="
+                padding: 0.75rem;
+                background: rgba(255, 170, 0, 0.1);
+                border-radius: 8px;
+                border-left: 4px solid #ffaa00;
+              ">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.25rem;">
+                  <span style="color: #ffaa00; font-weight: 700; font-size: 0.85em;">TIER X</span>
+                  <span style="color: #ffaa00; font-weight: 800; font-size: 1.1em; font-family: 'SF Mono', monospace;" id="tier-x-count">-</span>
+                </div>
+                <div style="color: #666; font-size: 0.75em;">HFT Monster</div>
+              </div>
+            </div>
+            
+            <div id="tier-distribution" style="
+              padding-top: 0.75rem;
+              border-top: 1px solid rgba(253, 126, 20, 0.2);
+              color: #666;
+              font-size: 0.85em;
+              text-align: center;
+            ">
+              <div style="color: #666; font-size: 0.9em;">Loading tier data...</div>
+            </div>
+          </div>
+          
+          <div class="card-actions" style="position: relative; z-index: 1;">
+            <a href="#" onclick="loadTiers(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #fd7e14 0%, #ff9800 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(253, 126, 20, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(253, 126, 20, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(253, 126, 20, 0.3)'">
+              <span>📊</span>
+              <span>View Tiers</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/registry/tiers" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: white;
+              color: #fd7e14;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              border: 2px solid #fd7e14;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='#fd7e14'; this.style.color='white'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='white'; this.style.color='#fd7e14'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>API JSON</span>
+            </a>
           </div>
         </div>
-        <div class="card">
-          <h4>📚 Registry Integration</h4>
-          <p><strong>Bookmaker tier-aware detection</strong></p>
-          <p class="status-badge status-active">✅ Tier Multipliers Active</p>
-          <div class="card-actions">
-            <a href="/api/registry/tiers" target="_blank" class="btn-link">📚 View Tiers →</a>
+        
+        <!-- RG Index Manifests Card - Zero-Index Velocity Overhaul -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #0a1929 0%, #1a2b3d 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(23, 162, 184, 0.5);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(23, 162, 184, 0.2), 0 0 20px rgba(23, 162, 184, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#17a2b8'; this.style.boxShadow='0 4px 20px rgba(23, 162, 184, 0.4), 0 0 30px rgba(23, 162, 184, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(23, 162, 184, 0.5)'; this.style.boxShadow='0 2px 12px rgba(23, 162, 184, 0.2), 0 0 20px rgba(23, 162, 184, 0.1)'; this.style.transform='translateY(0)'">
+          <!-- Animated background pulse -->
+          <div style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 50% 50%, rgba(23, 162, 184, 0.1) 0%, transparent 70%); animation: pulse 3s infinite; pointer-events: none;"></div>
+          
+          <div style="position: absolute; top: 0; right: 0; width: 80px; height: 80px; background: linear-gradient(135deg, rgba(23, 162, 184, 0.2) 0%, rgba(19, 132, 150, 0.1) 100%); border-radius: 0 12px 0 80px; opacity: 0.6;"></div>
+          
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; position: relative; z-index: 1;">
+            <h4 style="
+              color: #17a2b8;
+              margin: 0;
+              font-size: 1.3em;
+              font-weight: 700;
+              display: flex;
+              align-items: center;
+              gap: 0.5rem;
+            ">
+              <span style="font-size: 1.2em;">📁</span>
+              <span>RG Index Manifests</span>
+            </h4>
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.375rem;
+              padding: 0.375rem 0.75rem;
+              background: rgba(23, 162, 184, 0.2);
+              border-radius: 12px;
+              font-size: 0.75rem;
+              font-weight: 700;
+              color: #17a2b8;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              border: 1px solid rgba(23, 162, 184, 0.3);
+            ">
+              <span style="display: inline-block; width: 6px; height: 6px; background: #17a2b8; border-radius: 50%; animation: pulse 2s infinite;"></span>
+              Optimized • 100%
+            </span>
+          </div>
+          
+          <p style="margin: 0 0 1rem 0; color: #a0c4d4; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong style="color: #17a2b8;">Zero-Index Velocity</strong> • Bun-first ripgrep skeletons
+          </p>
+          
+          <!-- Performance Metrics -->
+          <div style="
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(23, 162, 184, 0.15);
+            border-radius: 10px;
+            border: 1px solid rgba(23, 162, 184, 0.3);
+            position: relative;
+            z-index: 1;
+          ">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 0.75rem;">
+              <div style="text-align: center;">
+                <div style="color: #17a2b8; font-size: 1.5em; font-weight: 800; font-family: 'SF Mono', monospace;">6-400×</div>
+                <div style="color: #a0c4d4; font-size: 0.75em; margin-top: 0.25rem;">Speed Burst</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="color: #17a2b8; font-size: 1.5em; font-weight: 800; font-family: 'SF Mono', monospace;">&lt;50ms</div>
+                <div style="color: #a0c4d4; font-size: 0.75em; margin-top: 0.25rem;">Query Latency</div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem; padding-top: 0.75rem; border-top: 1px solid rgba(23, 162, 184, 0.2);">
+              <span style="color: #28a745; font-weight: 700; font-size: 0.9em;">✅</span>
+              <span style="color: #a0c4d4; font-size: 0.85em;">AI-Adaptive Tuning Active</span>
+            </div>
+          </div>
+          
+          <!-- Optimization Techniques -->
+          <div style="
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            border-left: 4px solid #17a2b8;
+            position: relative;
+            z-index: 1;
+          ">
+            <div style="color: #17a2b8; font-weight: 700; font-size: 0.9em; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>⚡</span>
+              <span>Zero-Index Optimization Vectors</span>
+            </div>
+            <ul style="
+              list-style: none;
+              padding: 0;
+              margin: 0;
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 0.5rem;
+            ">
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>Pre-Filter Globs (80% reduction)</span>
+              </li>
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>Mmap Hyperdrive (2-5× I/O)</span>
+              </li>
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>Parallel Swarm (16+ cores)</span>
+              </li>
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>Literal-Opt Regex (70% DFA)</span>
+              </li>
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>Ngram Proxy (rg-all)</span>
+              </li>
+              <li style="padding: 0.5rem 0; color: #a0c4d4; font-size: 0.8em; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #17a2b8; font-weight: 700;">✓</span>
+                <span>KV-DO Caching (0.5-3ms)</span>
+              </li>
+            </ul>
+          </div>
+          
+          <!-- Integration Status -->
+          <div style="
+            margin: 1rem 0;
+            padding: 0.75rem 1rem;
+            background: rgba(23, 162, 184, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #17a2b8;
+            position: relative;
+            z-index: 1;
+          ">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #28a745; font-weight: 700; font-size: 0.9em;">✅</span>
+                <span style="color: #a0c4d4; font-size: 0.85em; font-weight: 600;">Bunfig-Native</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #28a745; font-weight: 700; font-size: 0.9em;">✅</span>
+                <span style="color: #a0c4d4; font-size: 0.85em; font-weight: 600;">Workers/KV/DO</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: #28a745; font-weight: 700; font-size: 0.9em;">✅</span>
+                <span style="color: #a0c4d4; font-size: 0.85em; font-weight: 600;">Self-Healing Oracle</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="card-actions" style="position: relative; z-index: 1; margin-top: 1.25rem;">
+            <a href="#" onclick="loadManifests(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(23, 162, 184, 0.4);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(23, 162, 184, 0.5)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(23, 162, 184, 0.4)'">
+              <span>📁</span>
+              <span>View Manifests</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/registry/manifests/pinnacle" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: rgba(23, 162, 184, 0.2);
+              color: #17a2b8;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              border: 2px solid rgba(23, 162, 184, 0.4);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='rgba(23, 162, 184, 0.3)'; this.style.borderColor='rgba(23, 162, 184, 0.6)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='rgba(23, 162, 184, 0.2)'; this.style.borderColor='rgba(23, 162, 184, 0.4)'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>Example API</span>
+            </a>
+          </div>
+          
+          <style>
+            @keyframes pulse {
+              0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+              }
+              50% {
+                opacity: 0.6;
+                transform: scale(1.05);
+              }
+            }
+          </style>
+        </div>
+        
+        <!-- R2 Bucket Storage Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(255, 170, 0, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(255, 170, 0, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#ffaa00'; this.style.boxShadow='0 4px 20px rgba(255, 170, 0, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(255, 170, 0, 0.3)'; this.style.boxShadow='0 2px 12px rgba(255, 170, 0, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(255, 170, 0, 0.1) 0%, rgba(255, 193, 7, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #ffaa00;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">☁️</span>
+            <span>R2 Bucket Storage</span>
+          </h4>
+          <p style="margin: 0 0 1.25rem 0; color: #ccc; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Private-backed registry</strong>
+          </p>
+          <div class="stat-display" style="
+            margin: 1.25rem 0;
+            padding: 1.25rem;
+            background: rgba(255, 170, 0, 0.1);
+            border-radius: 10px;
+            border: 1px solid rgba(255, 170, 0, 0.2);
+            position: relative;
+            z-index: 1;
+          ">
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(255, 170, 0, 0.15);
+            ">
+              <span class="stat-label" style="color: #ccc; font-weight: 600; font-size: 0.95em;">Bucket:</span>
+              <span class="stat-value" id="r2-bucket" style="
+                color: #ffaa00;
+                font-weight: 800;
+                font-size: 1.2em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
+            </div>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+            ">
+              <span class="stat-label" style="color: #ccc; font-weight: 600; font-size: 0.95em;">Total Objects:</span>
+              <span class="stat-value" id="r2-objects" style="
+                color: #ffaa00;
+                font-weight: 800;
+                font-size: 1.2em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
+            </div>
+          </div>
+          <div class="card-actions" style="position: relative; z-index: 1;">
+            <a href="#" onclick="loadR2Registry(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: #ffaa00;
+              color: #1a1a1a;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(255, 170, 0, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(255, 170, 0, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(255, 170, 0, 0.3)'">
+              <span>☁️</span>
+              <span>View R2 Bucket</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/registry/r2" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: rgba(255, 170, 0, 0.2);
+              color: #ffaa00;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              border: 2px solid #ffaa00;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='rgba(255, 170, 0, 0.3)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='rgba(255, 170, 0, 0.2)'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>R2 API</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="section" style="
+      background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
+      border-left: 6px solid #0d6efd;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(13, 110, 253, 0.15);
+    ">
+      <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem;">
+        <h2 style="
+          color: #0d6efd;
+          font-size: 2em;
+          margin: 0;
+          font-weight: 900;
+          letter-spacing: -0.5px;
+          text-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
+        ">🎯 Bet-Type Detection</h2>
+        <span style="
+          display: inline-flex;
+          align-items: center;
+          padding: 0.25rem 0.75rem;
+          background: rgba(13, 110, 253, 0.1);
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: #0d6efd;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        ">Pattern Detection Active</span>
+      </div>
+      
+      <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem;">
+        <!-- Detection Overview Card -->
+        <div class="card" style="
+          background: white;
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(13, 110, 253, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(13, 110, 253, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#0d6efd'; this.style.boxShadow='0 4px 20px rgba(13, 110, 253, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(13, 110, 253, 0.3)'; this.style.boxShadow='0 2px 12px rgba(13, 110, 253, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(13, 110, 253, 0.1) 0%, rgba(102, 126, 234, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #0d6efd;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">📊</span>
+            <span>Detection Overview</span>
+          </h4>
+          <p style="margin: 0 0 1.25rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Comprehensive bet-type pattern detection</strong>
+          </p>
+          <div class="stat-display" style="
+            margin: 1.25rem 0;
+            padding: 1.25rem;
+            background: linear-gradient(135deg, #f8f9fa 0%, #f0f4ff 100%);
+            border-radius: 10px;
+            border: 1px solid rgba(13, 110, 253, 0.2);
+            position: relative;
+            z-index: 1;
+          ">
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(13, 110, 253, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Bet Types:</span>
+              <span class="stat-value" id="bet-type-total" style="
+                color: #0d6efd;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
+            </div>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+              border-bottom: 1px solid rgba(13, 110, 253, 0.15);
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">Patterns Detected:</span>
+              <span class="stat-value" id="bet-type-patterns" style="
+                color: #28a745;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
+            </div>
+            <div class="stat-item" style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 0.875rem 0;
+            ">
+              <span class="stat-label" style="color: #666; font-weight: 600; font-size: 0.95em;">RG Compliant:</span>
+              <span class="stat-value" id="bet-type-rg-compliant" style="
+                color: #17a2b8;
+                font-weight: 800;
+                font-size: 1.4em;
+                font-family: 'SF Mono', monospace;
+              ">Loading...</span>
+            </div>
+          </div>
+          <div class="card-actions" style="position: relative; z-index: 1; margin-top: 1.25rem;">
+            <a href="#" onclick="loadBetTypeStats(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #0d6efd 0%, #0056b3 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(13, 110, 253, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(13, 110, 253, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(13, 110, 253, 0.3)'">
+              <span>📊</span>
+              <span>View Stats</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+            <a href="/api/bet-type/stats" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: white;
+              color: #0d6efd;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 600;
+              font-size: 0.9em;
+              border: 2px solid #0d6efd;
+              transition: all 0.25s ease;
+            " onmouseover="this.style.background='#0d6efd'; this.style.color='white'; this.style.transform='translateY(-2px)'" onmouseout="this.style.background='white'; this.style.color='#0d6efd'; this.style.transform='translateY(0)'">
+              <span>🔗</span>
+              <span>API JSON</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- Detection Types Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(40, 167, 69, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(40, 167, 69, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#28a745'; this.style.boxShadow='0 4px 20px rgba(40, 167, 69, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(40, 167, 69, 0.3)'; this.style.boxShadow='0 2px 12px rgba(40, 167, 69, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(40, 167, 69, 0.1) 0%, rgba(32, 201, 151, 0.05) 100%); border-radius: 0 0 60px 0;"></div>
+          <h4 style="
+            color: #28a745;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">🔍</span>
+            <span>Detection Types</span>
+          </h4>
+          <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Supported bet types</strong>
+          </p>
+          <ul style="
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+            position: relative;
+            z-index: 1;
+          ">
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(40, 167, 69, 0.1);">
+              <span style="color: #28a745; font-weight: 700; font-size: 1em;">✅</span>
+              <span><strong style="color: #28a745;">Team Totals</strong> • Live & pregame</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(40, 167, 69, 0.1);">
+              <span style="color: #28a745; font-weight: 700; font-size: 1em;">✅</span>
+              <span><strong style="color: #28a745;">Parlays</strong> • Multi-leg combinations</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(40, 167, 69, 0.1);">
+              <span style="color: #28a745; font-weight: 700; font-size: 1em;">✅</span>
+              <span><strong style="color: #28a745;">Same-Game Parlays</strong> • Correlated legs</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem; border-bottom: 1px solid rgba(40, 167, 69, 0.1);">
+              <span style="color: #28a745; font-weight: 700; font-size: 1em;">✅</span>
+              <span><strong style="color: #28a745;">Teasers</strong> • Point adjustments</span>
+            </li>
+            <li style="padding: 0.625rem 0; color: #666; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span style="color: #28a745; font-weight: 700; font-size: 1em;">✅</span>
+              <span><strong style="color: #28a745;">Bought Points</strong> • Spread modifications</span>
+            </li>
+          </ul>
+          <div class="card-actions" style="position: relative; z-index: 1; margin-top: 1.25rem;">
+            <a href="#" onclick="loadBetTypeDetection(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(40, 167, 69, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(40, 167, 69, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(40, 167, 69, 0.3)'">
+              <span>🔍</span>
+              <span>Test Detection</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- RG Integration Card -->
+        <div class="card" style="
+          background: white;
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(23, 162, 184, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(23, 162, 184, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#17a2b8'; this.style.boxShadow='0 4px 20px rgba(23, 162, 184, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(23, 162, 184, 0.3)'; this.style.boxShadow='0 2px 12px rgba(23, 162, 184, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; right: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(23, 162, 184, 0.1) 0%, rgba(19, 132, 150, 0.05) 100%); border-radius: 0 12px 0 60px;"></div>
+          <h4 style="
+            color: #17a2b8;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">🛡️</span>
+            <span>RG Integration</span>
+          </h4>
+          <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Responsible Gaming compliance</strong>
+          </p>
+          <div style="
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(23, 162, 184, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #17a2b8;
+            position: relative;
+            z-index: 1;
+          ">
+            <p class="status-badge status-active" style="margin: 0; color: #17a2b8; font-weight: 700; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span>✅</span>
+              <span>RG Index Integrated</span>
+            </p>
+            <p style="margin: 0.75rem 0 0 0; color: #666; font-size: 0.85em; line-height: 1.6;">
+              Real-time ruin risk calculation and CIELAB ΔE validation for bet-type detection
+            </p>
+          </div>
+          <div class="card-actions" style="position: relative; z-index: 1; margin-top: 1.25rem;">
+            <a href="#" onclick="loadRGCompliance(); return false;" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(23, 162, 184, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(23, 162, 184, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(23, 162, 184, 0.3)'">
+              <span>🛡️</span>
+              <span>View RG Status</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
+          </div>
+        </div>
+        
+        <!-- Registry Integration Card -->
+        <div class="card" style="
+          background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+          padding: 1.75rem;
+          border-radius: 12px;
+          border: 2px solid rgba(102, 126, 234, 0.3);
+          transition: all 0.3s ease;
+          box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1);
+          position: relative;
+          overflow: hidden;
+        " onmouseover="this.style.borderColor='#667eea'; this.style.boxShadow='0 4px 20px rgba(102, 126, 234, 0.2)'; this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(102, 126, 234, 0.3)'; this.style.boxShadow='0 2px 12px rgba(102, 126, 234, 0.1)'; this.style.transform='translateY(0)'">
+          <div style="position: absolute; top: 0; left: 0; width: 60px; height: 60px; background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.05) 100%); border-radius: 0 0 60px 0;"></div>
+          <h4 style="
+            color: #667eea;
+            margin: 0 0 0.75rem 0;
+            font-size: 1.3em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            z-index: 1;
+          ">
+            <span style="font-size: 1.2em;">📚</span>
+            <span>Registry Integration</span>
+          </h4>
+          <p style="margin: 0 0 1rem 0; color: #666; font-size: 0.95em; font-weight: 500; position: relative; z-index: 1;">
+            <strong>Bookmaker tier-aware detection</strong>
+          </p>
+          <div style="
+            margin: 1rem 0;
+            padding: 1rem;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            position: relative;
+            z-index: 1;
+          ">
+            <p class="status-badge status-active" style="margin: 0; color: #667eea; font-weight: 700; font-size: 0.95em; display: flex; align-items: center; gap: 0.5rem;">
+              <span>✅</span>
+              <span>Tier Multipliers Active</span>
+            </p>
+            <p style="margin: 0.75rem 0 0 0; color: #666; font-size: 0.85em; line-height: 1.6;">
+              Detection thresholds adjusted based on bookmaker tier classification (TIER_1_SHARP through TIER_X_MONSTER)
+            </p>
+          </div>
+          <div class="card-actions" style="position: relative; z-index: 1; margin-top: 1.25rem;">
+            <a href="/api/registry/tiers" target="_blank" class="btn-link" style="
+              display: inline-flex;
+              align-items: center;
+              gap: 0.5rem;
+              padding: 0.75rem 1.5rem;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              color: white;
+              text-decoration: none;
+              border-radius: 10px;
+              font-weight: 700;
+              font-size: 0.95em;
+              box-shadow: 0 3px 12px rgba(102, 126, 234, 0.3);
+              transition: all 0.25s ease;
+            " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 18px rgba(102, 126, 234, 0.4)'" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 3px 12px rgba(102, 126, 234, 0.3)'">
+              <span>📚</span>
+              <span>View Tiers</span>
+              <span style="opacity: 0.8;">→</span>
+            </a>
           </div>
         </div>
       </div>
@@ -1757,14 +4124,24 @@ function generateDashboard() {
         <div class="card">
           <h4>🔍 Search Glossary</h4>
           <p><strong>Find terms by keyword</strong></p>
+          <div style="margin: 15px 0; position: relative;">
+            <input 
+              type="text" 
+              id="glossary-search-input" 
+              placeholder="Type to search (e.g., 'parlay', 'spread', 'vig')..." 
+              style="width: 100%; padding: 10px; border: 2px solid #667eea; border-radius: 8px; font-size: 14px; background: #f8f9fa; box-sizing: border-box;"
+            />
+            <div id="glossary-suggestions" style="display: none; margin-top: 2px; max-height: 200px; overflow-y: auto; background: white; border: 1px solid #ddd; border-radius: 4px; position: absolute; z-index: 1000; width: 100%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+          </div>
           <div class="card-actions">
-            <a href="#" onclick="searchGlossary(); return false;" class="btn-link">🔍 Search →</a>
+            <a href="#" id="glossary-search-btn" class="btn-link">🔍 Search →</a>
+            <a href="/api/glossary/search" target="_blank" class="btn-link">🔗 API JSON →</a>
           </div>
         </div>
         <div class="card">
           <h4>🎯 Bet-Type Terms</h4>
           <p><strong>Definitions for wager types</strong></p>
-          <p class="status-badge status-active">✅ 5 Terms Registered</p>
+          <p class="status-badge status-active">✅ <span id="glossary-bet-types-badge">Loading...</span> Terms Registered</p>
           <div class="card-actions">
             <a href="#" onclick="loadBetTypeTerms(); return false;" class="btn-link">📋 View Bet Types →</a>
             <a href="/api/glossary/bet-types" target="_blank" class="btn-link">🔗 API JSON →</a>
@@ -1773,7 +4150,7 @@ function generateDashboard() {
         <div class="card">
           <h4>🛡️ RG Terms</h4>
           <p><strong>Responsible Gaming terminology</strong></p>
-          <p class="status-badge status-active">✅ Critical Compliance</p>
+          <p class="status-badge status-active">✅ <span id="glossary-rg-terms-badge">Loading...</span> Terms Registered</p>
           <div class="card-actions">
             <a href="#" onclick="loadRGTerms(); return false;" class="btn-link">🛡️ View RG Terms →</a>
             <a href="/api/glossary/category/rg_compliance" target="_blank" class="btn-link">🔗 API JSON →</a>
@@ -2079,12 +4456,39 @@ function generateDashboard() {
       try {
         const response = await fetch('/api/registry/tiers');
         const data = await response.json();
-        const tierHtml = Object.entries(data.tiers).map(([tier, info]: [string, any]) => 
-          \`<div class="stat-item"><span class="stat-label">\${tier}:</span><span class="stat-value">\${info.count}</span></div>\`
-        ).join('');
-        document.getElementById('tier-distribution')!.innerHTML = tierHtml;
+        
+        // Populate individual tier counts
+        const tierMap: Record<string, string> = {
+          'TIER_1_SHARP': 'tier-1-count',
+          'TIER_2_PREMIUM': 'tier-2-count',
+          'TIER_3_US_RECREATIONAL': 'tier-3-count',
+          'TIER_4_MANUAL_SHADOW': 'tier-4-count',
+          'TIER_5_SPECIALIZED': 'tier-5-count',
+          'TIER_X_MONSTER': 'tier-x-count'
+        };
+        
+        Object.entries(data.tiers || {}).forEach(([tier, info]: [string, any]) => {
+          const elementId = tierMap[tier];
+          if (elementId) {
+            const el = document.getElementById(elementId);
+            if (el) el.textContent = String(info.count || 0);
+          }
+        });
+        
+        // Update summary display
+        const totalCount = Object.values(data.tiers || {}).reduce((sum: number, info: any) => sum + (info.count || 0), 0);
+        const tierHtml = \`<div style="color: #fd7e14; font-weight: 700; font-size: 0.95em;">Total: <span style="font-family: 'SF Mono', monospace;">\${totalCount}</span> bookmakers across 6 tiers</div>\`;
+        const tierDistEl = document.getElementById('tier-distribution');
+        if (tierDistEl) {
+          tierDistEl.innerHTML = tierHtml;
+        }
       } catch (error) {
         console.error('Failed to load tier stats:', error);
+        // Set all counts to 0 on error
+        ['tier-1-count', 'tier-2-count', 'tier-3-count', 'tier-4-count', 'tier-5-count', 'tier-x-count'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = '0';
+        });
       }
     }
     
@@ -2230,65 +4634,7 @@ function generateDashboard() {
       createModal('📊 Reserved Colors', content, { width: MODAL_NARROW_WIDTH });
     }
     
-    // Auto-refresh every 5 seconds
-    let refreshInterval = setInterval(() => {
-      updateStatus();
-    }, STATUS_REFRESH_INTERVAL);
-    
-    // Fetch and update status
-    async function updateStatus() {
-      try {
-        const response = await fetch('/api/dev/status');
-        const status = await response.json();
-        
-        // Update worker stats
-        const workerCount = document.getElementById('worker-count');
-        const workerIdle = document.getElementById('worker-idle');
-        const workerWorking = document.getElementById('worker-working');
-        const workerError = document.getElementById('worker-error');
-        
-        if (workerCount) workerCount.textContent = status.workers.total;
-        if (workerIdle) workerIdle.textContent = status.workers.summary.idle;
-        if (workerWorking) workerWorking.textContent = status.workers.summary.working;
-        if (workerError) workerError.textContent = status.workers.summary.error;
-        
-        // Update service statuses
-        updateServiceStatus('worker-api-status', status.services.worker_api.status);
-        updateServiceStatus('spline-api-status', status.services.spline_api.status);
-        updateServiceStatus('dev-api-status', status.services.dev_api.status);
-        
-        // Update config statuses
-        updateConfigStatus('bunfig-status', status.configs.bunfig);
-        updateConfigStatus('bun-ai-status', status.configs['bun-ai']);
-        
-        // Update system status
-        const statusTimestamp = document.getElementById('status-timestamp');
-        const statusEndpoints = document.getElementById('status-endpoints');
-        const statusConfigs = document.getElementById('status-configs');
-        
-        if (statusTimestamp) {
-          const date = new Date(status.timestamp);
-          statusTimestamp.textContent = date.toLocaleTimeString();
-        }
-        if (statusEndpoints) {
-          statusEndpoints.textContent = status.endpoints.total + ' endpoints';
-        }
-        if (statusConfigs) {
-          const loaded = Object.values(status.configs).filter(c => c === 'loaded').length;
-          statusConfigs.textContent = loaded + ' / ' + Object.keys(status.configs).length;
-        }
-        
-        // Update worker API status badge
-        const workerApiStatus = document.getElementById('worker-api-status');
-        if (workerApiStatus) {
-          workerApiStatus.className = 'status-badge ' + (status.services.worker_api.status === 'running' ? 'status-active' : 'status-inactive');
-          workerApiStatus.textContent = status.services.worker_api.status === 'running' ? '✅ Running' : '❌ Not Running';
-        }
-      } catch (error) {
-        console.error('Failed to update status:', error);
-      }
-    }
-    
+    // Helper functions for status updates
     function updateServiceStatus(id, status) {
       const element = document.getElementById(id);
       if (element) {
@@ -2303,6 +4649,99 @@ function generateDashboard() {
         element.className = 'status-badge ' + (status === 'loaded' ? 'status-active' : 'status-inactive');
         element.textContent = status === 'loaded' ? '✅ Loaded' : '❌ Missing';
       }
+    }
+    
+    // Fetch and update status
+    async function updateStatus() {
+      try {
+        const response = await fetch('/api/dev/status');
+        if (!response.ok) {
+          throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+        }
+        const status = await response.json();
+        
+        // Update worker stats
+        const workerCount = document.getElementById('worker-count');
+        const workerIdle = document.getElementById('worker-idle');
+        const workerWorking = document.getElementById('worker-working');
+        const workerError = document.getElementById('worker-error');
+        
+        if (workerCount) workerCount.textContent = status.workers?.total ?? 0;
+        if (workerIdle) workerIdle.textContent = status.workers?.summary?.idle ?? 0;
+        if (workerWorking) workerWorking.textContent = status.workers?.summary?.working ?? 0;
+        if (workerError) workerError.textContent = status.workers?.summary?.error ?? 0;
+        
+        // Update service statuses
+        if (status.services) {
+          updateServiceStatus('worker-api-status', status.services.worker_api?.status);
+          updateServiceStatus('spline-api-status', status.services.spline_api?.status);
+          updateServiceStatus('dev-api-status', status.services.dev_api?.status);
+        }
+        
+        // Update config statuses
+        if (status.configs) {
+          updateConfigStatus('bunfig-status', status.configs.bunfig);
+          updateConfigStatus('bun-ai-status', status.configs['bun-ai']);
+        }
+        
+        // Update system status
+        const statusTimestamp = document.getElementById('status-timestamp');
+        const statusEndpoints = document.getElementById('status-endpoints');
+        const statusConfigs = document.getElementById('status-configs');
+        
+        if (statusTimestamp && status.timestamp) {
+          try {
+            const date = new Date(status.timestamp);
+            statusTimestamp.textContent = date.toLocaleTimeString();
+          } catch (e) {
+            statusTimestamp.textContent = new Date().toLocaleTimeString();
+          }
+        }
+        if (statusEndpoints && status.endpoints?.total !== undefined) {
+          statusEndpoints.textContent = status.endpoints.total + ' endpoints';
+        }
+        if (statusConfigs && status.configs) {
+          const loaded = Object.values(status.configs).filter(c => c === 'loaded').length;
+          statusConfigs.textContent = loaded + ' / ' + Object.keys(status.configs).length;
+        }
+        
+        // Update worker API status badge
+        const workerApiStatus = document.getElementById('worker-api-status');
+        if (workerApiStatus && status.services?.worker_api) {
+          workerApiStatus.className = 'status-badge ' + (status.services.worker_api.status === 'running' ? 'status-active' : 'status-inactive');
+          workerApiStatus.textContent = status.services.worker_api.status === 'running' ? '✅ Running' : '❌ Not Running';
+        }
+      } catch (error) {
+        console.error('Failed to update status:', error);
+        // Show error state in UI
+        const statusTimestamp = document.getElementById('status-timestamp');
+        const statusEndpoints = document.getElementById('status-endpoints');
+        const statusConfigs = document.getElementById('status-configs');
+        if (statusTimestamp) statusTimestamp.textContent = 'Error';
+        if (statusEndpoints) statusEndpoints.textContent = 'Error';
+        if (statusConfigs) statusConfigs.textContent = 'Error';
+      }
+    }
+    
+    // Auto-refresh every 5 seconds (start after initial load)
+    let refreshInterval = null;
+    
+    // Initialize on DOM ready
+    function initializeStatusUpdates() {
+      // Initial load
+      updateStatus();
+      // Set up auto-refresh
+      refreshInterval = setInterval(() => {
+        updateStatus();
+      }, STATUS_REFRESH_INTERVAL);
+    }
+    
+    // Wait for DOM to be ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeStatusUpdates);
+    } else {
+      // DOM already ready
+      initializeStatusUpdates();
     }
     
     // Load configs on click
@@ -2473,6 +4912,61 @@ function generateDashboard() {
       }
     }
     
+    // TES-OPS-004: Version bump function
+    async function bumpVersion() {
+      const bumpTypeSelect = document.getElementById('bumpType') as HTMLSelectElement;
+      const resultDiv = document.getElementById('bumpResult') as HTMLDivElement;
+      
+      if (!bumpTypeSelect || !resultDiv) {
+        alert('Version bump UI elements not found');
+        return;
+      }
+      
+      const type = bumpTypeSelect.value as 'major' | 'minor' | 'patch';
+      
+      // Confirm action
+      const confirmMessage = \`Are you sure you want to bump the version (\${type.toUpperCase()})?\n\nThis will update version references across multiple files.`;
+      if (!confirm(confirmMessage)) {
+        return;
+      }
+      
+      // Show loading state
+      resultDiv.style.display = 'block';
+      resultDiv.style.background = '#fff3cd';
+      resultDiv.style.color = '#856404';
+      resultDiv.textContent = '⏳ Bumping version...';
+      
+      try {
+        const response = await fetch('/api/dev/bump-version', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ type }),
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Version bump failed');
+        }
+        
+        // Show success
+        resultDiv.style.background = '#d4edda';
+        resultDiv.style.color = '#155724';
+        resultDiv.innerHTML = \`✅ \${data.message}<br><small>Old: \${data.oldVersion} → New: \${data.newVersion}</small>\`;
+        
+        // Reload page after 2 seconds to show updated version
+        setTimeout(() => {
+          location.reload();
+        }, 2000);
+      } catch (error) {
+        resultDiv.style.background = '#f8d7da';
+        resultDiv.style.color = '#721c24';
+        resultDiv.textContent = '❌ ' + handleError(error, 'Version bump failed');
+      }
+    }
+    
     async function loadManifests() {
   try {
     const response = await fetch('/api/registry/manifests/pinnacle');
@@ -2582,11 +5076,88 @@ async function loadWorkers() {
       }
     }
     
+    async function loadGlossaryStats() {
+      // Load all glossary stats in parallel for better performance
+      const [totalResponse, betTypesResponse, rgResponse] = await Promise.allSettled([
+        fetch('/api/glossary/search'),
+        fetch('/api/glossary/bet-types'),
+        fetch('/api/glossary/category/rg_compliance')
+      ]);
+      
+      // Update total terms count
+      if (totalResponse.status === 'fulfilled') {
+        try {
+          const data = await totalResponse.value.json();
+          const totalEl = document.getElementById('glossary-total');
+          if (totalEl) totalEl.textContent = data.count?.toString() || '0';
+        } catch (error) {
+          console.error('Failed to parse glossary total:', error);
+          const totalEl = document.getElementById('glossary-total');
+          if (totalEl) totalEl.textContent = '0';
+        }
+      } else {
+        console.error('Failed to load glossary total:', totalResponse.reason);
+        const totalEl = document.getElementById('glossary-total');
+        if (totalEl) totalEl.textContent = '0';
+      }
+      
+      // Update bet-type terms count
+      if (betTypesResponse.status === 'fulfilled') {
+        try {
+          const data = await betTypesResponse.value.json();
+          const count = data.count?.toString() || '0';
+          const betTypesEl = document.getElementById('glossary-bet-types');
+          if (betTypesEl) betTypesEl.textContent = count;
+          const badgeEl = document.getElementById('glossary-bet-types-badge');
+          if (badgeEl) badgeEl.textContent = count;
+        } catch (error) {
+          console.error('Failed to parse bet-type count:', error);
+          const betTypesEl = document.getElementById('glossary-bet-types');
+          if (betTypesEl) betTypesEl.textContent = '0';
+          const badgeEl = document.getElementById('glossary-bet-types-badge');
+          if (badgeEl) badgeEl.textContent = '0';
+        }
+      } else {
+        console.error('Failed to load bet-type count:', betTypesResponse.reason);
+        const betTypesEl = document.getElementById('glossary-bet-types');
+        if (betTypesEl) betTypesEl.textContent = '0';
+        const badgeEl = document.getElementById('glossary-bet-types-badge');
+        if (badgeEl) badgeEl.textContent = '0';
+      }
+      
+      // Update RG terms count
+      if (rgResponse.status === 'fulfilled') {
+        try {
+          const data = await rgResponse.value.json();
+          const count = data.count?.toString() || '0';
+          const rgEl = document.getElementById('glossary-rg-terms');
+          if (rgEl) rgEl.textContent = count;
+          const badgeEl = document.getElementById('glossary-rg-terms-badge');
+          if (badgeEl) badgeEl.textContent = count;
+        } catch (error) {
+          console.error('Failed to parse RG terms count:', error);
+          const rgEl = document.getElementById('glossary-rg-terms');
+          if (rgEl) rgEl.textContent = '0';
+          const badgeEl = document.getElementById('glossary-rg-terms-badge');
+          if (badgeEl) badgeEl.textContent = '0';
+        }
+      } else {
+        console.error('Failed to load RG terms count:', rgResponse.reason);
+        const rgEl = document.getElementById('glossary-rg-terms');
+        if (rgEl) rgEl.textContent = '0';
+        const badgeEl = document.getElementById('glossary-rg-terms-badge');
+        if (badgeEl) badgeEl.textContent = '0';
+      }
+    }
+    
     async function loadGlossary() {
       try {
         const response = await fetch('/api/glossary/search');
         const data = await response.json();
-        document.getElementById('glossary-total')!.textContent = data.count?.toString() || '0';
+        
+        // Update total count (in case it changed)
+        const totalEl = document.getElementById('glossary-total');
+        if (totalEl) totalEl.textContent = data.count?.toString() || '0';
         
         const highlighted = JSON.stringify(data, null, 2);
         const content = \`
@@ -2599,22 +5170,292 @@ async function loadWorkers() {
       }
     }
     
-    async function searchGlossary() {
-      const keyword = prompt('Enter search keyword:') || '';
-      if (!keyword) return;
+    // Handle search input with autocomplete
+    let searchTimeout: number | null = null;
+    async function handleGlossarySearchInput(event: KeyboardEvent) {
+      const input = event.target as HTMLInputElement;
+      const query = input.value.trim();
+      const suggestionsEl = document.getElementById('glossary-suggestions');
+      
+      // Clear previous timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      // Handle Escape key - close suggestions
+      if (event.key === 'Escape') {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        return;
+      }
+      
+      // Hide suggestions if input is empty
+      if (!query || query.length < 2) {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        return;
+      }
+      
+      // Handle Enter key - perform search
+      if (event.key === 'Enter') {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        await performGlossarySearch(query);
+        return;
+      }
+      
+      // Debounce autocomplete requests
+      searchTimeout = setTimeout(async () => {
+        try {
+          const response = await fetch(\`/api/glossary/suggestions?q=\${encodeURIComponent(query)}&limit=8\`);
+          const data = await response.json();
+          
+          if (suggestionsEl && data.suggestions && data.suggestions.length > 0) {
+            const suggestionsHTML = data.suggestions.map((s: string) => 
+              \`<div style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee;" 
+                  onmouseover="this.style.background='#f0f0f0'" 
+                  onmouseout="this.style.background='white'"
+                  onclick="document.getElementById('glossary-search-input').value='\${s}'; document.getElementById('glossary-suggestions').style.display='none'; performGlossarySearch('\${s}');">
+                \${s}
+              </div>\`
+            ).join('');
+            suggestionsEl.innerHTML = suggestionsHTML;
+            suggestionsEl.style.display = 'block';
+          } else {
+            if (suggestionsEl) suggestionsEl.style.display = 'none';
+          }
+        } catch (error) {
+          console.error('Failed to load suggestions:', error);
+          if (suggestionsEl) suggestionsEl.style.display = 'none';
+        }
+      }, 300) as unknown as number;
+    }
+    
+    // Handle search input with autocomplete
+    let searchTimeout: number | null = null;
+    async function handleGlossarySearchInput(event: KeyboardEvent) {
+      const input = event.target as HTMLInputElement;
+      const query = input.value.trim();
+      const suggestionsEl = document.getElementById('glossary-suggestions');
+      
+      // Clear previous timeout
+      if (searchTimeout) {
+        clearTimeout(searchTimeout);
+      }
+      
+      // Handle Escape key - close suggestions
+      if (event.key === 'Escape') {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        return;
+      }
+      
+      // Hide suggestions if input is empty
+      if (!query || query.length < 2) {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        return;
+      }
+      
+      // Handle Enter key - perform search
+      if (event.key === 'Enter') {
+        if (suggestionsEl) suggestionsEl.style.display = 'none';
+        await performGlossarySearch(query);
+        return;
+      }
+      
+      // Debounce autocomplete requests
+      searchTimeout = setTimeout(async () => {
+        try {
+          const response = await fetch('/api/glossary/suggestions?q=' + encodeURIComponent(query) + '&limit=8');
+          const data = await response.json();
+          
+          if (suggestionsEl && data.suggestions && data.suggestions.length > 0) {
+            const suggestionsHTML = data.suggestions.map((s: string) => {
+              const escaped = s.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+              return '<div style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee;" onmouseover="this.style.background=\\'#f0f0f0\\'" onmouseout="this.style.background=\\'white\\'" onclick="document.getElementById(\\'glossary-search-input\\').value=\\'' + escaped + '\\'; document.getElementById(\\'glossary-suggestions\\').style.display=\\'none\\'; performGlossarySearch(\\'' + escaped + '\\');">' + s + '</div>';
+            }).join('');
+            suggestionsEl.innerHTML = suggestionsHTML;
+            suggestionsEl.style.display = 'block';
+          } else {
+            if (suggestionsEl) suggestionsEl.style.display = 'none';
+          }
+        } catch (error) {
+          console.error('Failed to load suggestions:', error);
+          if (suggestionsEl) suggestionsEl.style.display = 'none';
+        }
+      }, 300) as unknown as number;
+    }
+    
+    // Close suggestions when clicking outside
+    document.addEventListener('click', (e) => {
+      const suggestionsEl = document.getElementById('glossary-suggestions');
+      const inputEl = document.getElementById('glossary-search-input');
+      if (suggestionsEl && inputEl && 
+          e.target !== suggestionsEl && 
+          e.target !== inputEl && 
+          !suggestionsEl.contains(e.target as Node)) {
+        suggestionsEl.style.display = 'none';
+      }
+    });
+    
+    async function performGlossarySearch(keyword: string) {
+      if (!keyword || keyword.trim().length === 0) {
+        const input = document.getElementById('glossary-search-input') as HTMLInputElement;
+        keyword = input?.value.trim() || '';
+        if (!keyword) {
+          alert('Please enter a search term');
+          return;
+        }
+      }
+      
+      keyword = keyword.trim();
       
       try {
-        const response = await fetch(\`/api/glossary/search?keyword=\${encodeURIComponent(keyword)}\`);
+        const response = await fetch('/api/glossary/search?keyword=' + encodeURIComponent(keyword));
+        
+        if (!response.ok) {
+          throw new Error('HTTP error! status: ' + response.status);
+        }
+        
         const data = await response.json();
         
-        const highlighted = JSON.stringify(data, null, 2);
-        const content = \`
-          <h3>🔍 Search Results: "\${keyword}" (\${data.count} matches)</h3>
-          <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;">\${highlighted}</pre>
-        \`;
-        createModal('🔍 Glossary Search', content);
+        if (data.terms && data.terms.length > 0) {
+          // Format terms as cards
+          const termsHTML = data.terms.map((term: any) => {
+            const categoryColors: Record<string, string> = {
+              'bet-types': '#667eea',
+              'markets': '#f093fb',
+              'odds': '#4facfe',
+              'general': '#43e97b',
+              'rg_compliance': '#fa709a'
+            };
+            const color = categoryColors[term.category] || '#667eea';
+            const abbrev = term.abbreviation ? '<span style="color: #666; font-weight: normal;"> (' + term.abbreviation + ')</span>' : '';
+            const examplesHTML = term.examples && term.examples.length > 0 ? 
+              '<div style="margin-top: 10px;"><strong style="color: #666; font-size: 12px;">Examples:</strong><ul style="margin: 5px 0; padding-left: 20px; color: #777; font-size: 13px;">' +
+              term.examples.map((ex: string) => '<li>' + ex + '</li>').join('') +
+              '</ul></div>' : '';
+            const complexityHTML = term.complexity ? 
+              '<div style="margin-top: 8px;"><span style="background: #e9ecef; color: #495057; padding: 2px 6px; border-radius: 3px; font-size: 11px;">' +
+              term.complexity.charAt(0).toUpperCase() + term.complexity.slice(1) + ' Level</span></div>' : '';
+            
+            return '<div style="background: white; border-left: 4px solid ' + color + '; padding: 15px; margin-bottom: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">' +
+              '<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">' +
+              '<h4 style="margin: 0; color: #333;">' + term.term + abbrev + '</h4>' +
+              '<span style="background: ' + color + '; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; text-transform: uppercase;">' +
+              term.category.replace('_', ' ') + '</span></div>' +
+              '<p style="margin: 8px 0; color: #555; line-height: 1.5;">' + term.definition + '</p>' +
+              examplesHTML + complexityHTML +
+              '</div>';
+          }).join('');
+          
+          const content = '<div style="max-height: 70vh; overflow-y: auto;">' +
+            '<h3 style="margin-top: 0;">🔍 Search Results: "' + keyword + '"</h3>' +
+            '<p style="color: #666; margin-bottom: 20px;">Found <strong>' + data.count + '</strong> matching term' + (data.count !== 1 ? 's' : '') + '</p>' +
+            termsHTML + '</div>';
+          createModal('🔍 Glossary Search Results', content);
+        } else {
+          const content = '<div style="text-align: center; padding: 40px;">' +
+            '<h3>No Results Found</h3>' +
+            '<p style="color: #666;">No terms found matching "' + keyword + '"</p>' +
+            '<p style="color: #999; font-size: 14px; margin-top: 20px;">Try searching for: parlay, spread, moneyline, vig, or steam</p>' +
+            '</div>';
+          createModal('🔍 Glossary Search', content);
+        }
       } catch (error) {
-        alert('Failed to search glossary: ' + error);
+        console.error('Search error:', error);
+        alert('Failed to search glossary: ' + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    
+    async function searchGlossary() {
+      try {
+        const input = document.getElementById('glossary-search-input') as HTMLInputElement;
+        let keyword = '';
+        
+        if (input && input.value.trim()) {
+          keyword = input.value.trim();
+        } else {
+          // Fallback to prompt if input doesn't exist or is empty
+          keyword = prompt('Enter search keyword:') || '';
+        }
+        
+        if (!keyword) {
+          // Show helpful message if no keyword provided
+          const content = '<div style="text-align: center; padding: 40px;">' +
+            '<h3>🔍 Search Glossary</h3>' +
+            '<p style="color: #666;">Please enter a search term</p>' +
+            '<p style="color: #999; font-size: 14px; margin-top: 20px;">Try searching for: parlay, spread, moneyline, vig, or steam</p>' +
+            '</div>';
+          createModal('🔍 Glossary Search', content);
+          return;
+        }
+        
+        await performGlossarySearch(keyword);
+      } catch (error) {
+        console.error('Search error:', error);
+        alert('Failed to search glossary: ' + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+    
+    // Make functions globally accessible and attach event listeners
+    (window as any).handleGlossarySearchInput = handleGlossarySearchInput;
+    (window as any).searchGlossary = searchGlossary;
+    (window as any).performGlossarySearch = performGlossarySearch;
+    
+    // Attach event listeners after DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        const input = document.getElementById('glossary-search-input');
+        const searchBtn = document.getElementById('glossary-search-btn');
+        if (input) {
+          input.addEventListener('keyup', handleGlossarySearchInput);
+        }
+        if (searchBtn) {
+          searchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            searchGlossary();
+          });
+        }
+      });
+    } else {
+      const input = document.getElementById('glossary-search-input');
+      const searchBtn = document.getElementById('glossary-search-btn');
+      if (input) {
+        input.addEventListener('keyup', handleGlossarySearchInput);
+      }
+      if (searchBtn) {
+        searchBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          searchGlossary();
+        });
+      }
+    }
+    
+    
+    async function searchGlossary() {
+      try {
+        const input = document.getElementById('glossary-search-input') as HTMLInputElement;
+        let keyword = '';
+        
+        if (input && input.value.trim()) {
+          keyword = input.value.trim();
+        } else {
+          // Fallback to prompt if input doesn't exist or is empty
+          keyword = prompt('Enter search keyword:') || '';
+        }
+        
+        if (!keyword) {
+          // Show helpful message if no keyword provided
+          const content = '<div style="text-align: center; padding: 40px;">' +
+            '<h3>🔍 Search Glossary</h3>' +
+            '<p style="color: #666;">Please enter a search term</p>' +
+            '<p style="color: #999; font-size: 14px; margin-top: 20px;">Try searching for: parlay, spread, moneyline, vig, or steam</p>' +
+            '</div>';
+          createModal('🔍 Glossary Search', content);
+          return;
+        }
+        
+        await performGlossarySearch(keyword);
+      } catch (error) {
+        console.error('Search error:', error);
+        alert('Failed to search glossary: ' + (error instanceof Error ? error.message : String(error)));
       }
     }
     
@@ -2622,15 +5463,22 @@ async function loadWorkers() {
       try {
         const response = await fetch('/api/glossary/bet-types');
         const data = await response.json();
-        document.getElementById('glossary-bet-types')!.textContent = data.count?.toString() || '0';
         
+        // Update count display
+        const count = data.count?.toString() || '0';
+        const betTypesEl = document.getElementById('glossary-bet-types');
+        if (betTypesEl) betTypesEl.textContent = count;
+        const badgeEl = document.getElementById('glossary-bet-types-badge');
+        if (badgeEl) badgeEl.textContent = count;
+        
+        // Display terms in modal
         const termsList = data.terms.map((t: any) => 
-          \`<li><strong>\${t.term}</strong> (\${t.abbreviation}) - \${t.definition.substring(0, 100)}...</li>\`
+          \`<li style="margin-bottom: 12px;"><strong>\${t.term}</strong>\${t.abbreviation ? \` (\${t.abbreviation})\` : ''} - \${t.definition.substring(0, 120)}\${t.definition.length > 120 ? '...' : ''}</li>\`
         ).join('');
         
         const content = \`
           <h3>🎯 Bet-Type Terms (\${data.count} total)</h3>
-          <ul style="list-style: none; padding: 0;">
+          <ul style="list-style: none; padding: 0; max-height: 60vh; overflow-y: auto;">
             \${termsList}
           </ul>
         \`;
@@ -2644,15 +5492,22 @@ async function loadWorkers() {
       try {
         const response = await fetch('/api/glossary/category/rg_compliance');
         const data = await response.json();
-        document.getElementById('glossary-rg-terms')!.textContent = data.count?.toString() || '0';
         
+        // Update count display
+        const count = data.count?.toString() || '0';
+        const rgEl = document.getElementById('glossary-rg-terms');
+        if (rgEl) rgEl.textContent = count;
+        const badgeEl = document.getElementById('glossary-rg-terms-badge');
+        if (badgeEl) badgeEl.textContent = count;
+        
+        // Display terms in modal
         const termsList = data.terms.map((t: any) => 
-          \`<li><strong>\${t.term}</strong> - \${t.definition.substring(0, 100)}...</li>\`
+          \`<li style="margin-bottom: 12px;"><strong>\${t.term}</strong>\${t.abbreviation ? \` (\${t.abbreviation})\` : ''} - \${t.definition.substring(0, 120)}\${t.definition.length > 120 ? '...' : ''}</li>\`
         ).join('');
         
         const content = \`
           <h3>🛡️ RG Compliance Terms (\${data.count} total)</h3>
-          <ul style="list-style: none; padding: 0;">
+          <ul style="list-style: none; padding: 0; max-height: 60vh; overflow-y: auto;">
             \${termsList}
           </ul>
         \`;
@@ -2844,15 +5699,295 @@ async function loadWorkers() {
       }
     }
     
-    // Initial load
-    updateStatus();
-    loadGlossary();
-    loadFeatureFlags();
-    loadFeedStats(); // Load stats without opening modal
-    checkShadowWSStatus();
+    // Initialize dashboard stats when DOM is ready
+    function initializeDashboard() {
+      loadGlossaryStats(); // Load all glossary stats automatically
+      loadFeatureFlags();
+      loadFeedStats(); // Load stats without opening modal
+      checkShadowWSStatus();
+    }
+    
+    // Wait for DOM to be ready before initializing
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeDashboard);
+    } else {
+      // DOM already ready, initialize immediately
+      initializeDashboard();
+    }
     
     // Auto-refresh Shadow WS status every 10 seconds
     setInterval(checkShadowWSStatus, 10000);
+  </script>
+</body>
+</html>`;
+}
+
+// Generate Registry Dashboard HTML
+function generateRegistryDashboard(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📚 Bookmaker Registry Dashboard - WNCAAB Dev Server</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .header p {
+      font-size: 1.2em;
+      opacity: 0.9;
+    }
+    .content {
+      padding: 40px;
+    }
+    .actions {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+      font-size: 1.2em;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+    .stat-card {
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 12px;
+      padding: 24px;
+      border-left: 5px solid #667eea;
+      text-align: center;
+    }
+    .stat-card h3 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.1em;
+      font-weight: 600;
+    }
+    .stat-card .value {
+      font-size: 2.5em;
+      font-weight: 700;
+      color: #333;
+      font-family: 'SF Mono', 'Monaco', monospace;
+    }
+    .bookmaker-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    .bookmaker-card {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 20px;
+      border-left: 4px solid #667eea;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .bookmaker-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    .bookmaker-card h3 {
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 1.2em;
+    }
+    .bookmaker-card .tier {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .tier-1 { background: rgba(102, 126, 234, 0.2); color: #667eea; }
+    .tier-2 { background: rgba(40, 167, 69, 0.2); color: #28a745; }
+    .tier-3 { background: rgba(253, 126, 20, 0.2); color: #fd7e14; }
+    .tier-4 { background: rgba(23, 162, 184, 0.2); color: #17a2b8; }
+    .tier-5 { background: rgba(118, 75, 162, 0.2); color: #764ba2; }
+    .tier-x { background: rgba(255, 170, 0, 0.2); color: #ffaa00; }
+    .hidden {
+      display: none;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #dc3545;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📚 Bookmaker Registry Dashboard</h1>
+      <p>44 Bookmakers • 6 Tiers • Comprehensive Registry Management</p>
+    </div>
+    <div class="content">
+      <div class="actions">
+        <button class="btn" onclick="loadRegistry()">🔄 Refresh Registry →</button>
+        <a href="/api/registry/bookmakers" target="_blank" class="btn btn-secondary">🔗 API JSON →</a>
+        <a href="/api/registry/tiers" target="_blank" class="btn btn-secondary">🔗 Tiers API →</a>
+        <a href="/" class="btn btn-secondary">🏠 Main Dashboard →</a>
+      </div>
+      
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading registry data...</p>
+      </div>
+      
+      <div id="content" class="hidden">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <h3>Total Bookmakers</h3>
+            <div class="value" id="stats-total">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>With Profiles</h3>
+            <div class="value" id="stats-profiles">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>With Manifests</h3>
+            <div class="value" id="stats-manifests">-</div>
+          </div>
+          <div class="stat-card">
+            <h3>Tiers</h3>
+            <div class="value">6</div>
+          </div>
+        </div>
+        
+        <div id="bookmaker-grid" class="bookmaker-grid"></div>
+      </div>
+      
+      <div id="error" class="error hidden"></div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadRegistry() {
+      const loadingEl = document.getElementById('loading');
+      const contentEl = document.getElementById('content');
+      const errorEl = document.getElementById('error');
+      const statsTotalEl = document.getElementById('stats-total');
+      const statsProfilesEl = document.getElementById('stats-profiles');
+      const statsManifestsEl = document.getElementById('stats-manifests');
+      const gridEl = document.getElementById('bookmaker-grid');
+      
+      loadingEl.classList.remove('hidden');
+      contentEl.classList.add('hidden');
+      errorEl.classList.add('hidden');
+      
+      try {
+        const response = await fetch('/api/registry/bookmakers');
+        if (!response.ok) {
+          throw new Error('API returned ' + response.status + ': ' + response.statusText);
+        }
+        const data = await response.json();
+        
+        // Update stats
+        if (statsTotalEl) statsTotalEl.textContent = data.total || '0';
+        if (statsProfilesEl) statsProfilesEl.textContent = data.withProfiles || '0';
+        if (statsManifestsEl) statsManifestsEl.textContent = data.withManifests || '0';
+        
+        // Render bookmakers
+        if (gridEl && data.bookmakers) {
+          gridEl.innerHTML = data.bookmakers.map(bookie => {
+            const tierClass = 'tier-' + (bookie.tier?.replace(/[^0-9X]/g, '') || 'unknown');
+            const tierName = bookie.tier || 'Unknown';
+            return '<div class="bookmaker-card">' +
+              '<h3>' + (bookie.id || 'Unknown') + '</h3>' +
+              '<span class="tier ' + tierClass + '">' + tierName + '</span>' +
+              '<div style="margin-top: 10px; font-size: 0.9em; color: #666;">' +
+              (bookie.profile ? '✅ Profile' : '❌ No Profile') + ' • ' +
+              (bookie.manifest ? '✅ Manifest' : '❌ No Manifest') +
+              '</div>' +
+              '</div>';
+          }).join('');
+        }
+        
+        loadingEl.classList.add('hidden');
+        contentEl.classList.remove('hidden');
+      } catch (error) {
+        console.error('Failed to load registry:', error);
+        loadingEl.classList.add('hidden');
+        errorEl.classList.remove('hidden');
+        errorEl.textContent = 'Failed to load registry: ' + (error instanceof Error ? error.message : String(error));
+      }
+    }
+    
+    // Load on page load
+    loadRegistry();
   </script>
 </body>
 </html>`;
@@ -3201,7 +6336,7 @@ const devServer = Bun.serve<WebSocketData>({
       headers: apiHeaders({
         domain: 'system',
         scope: 'version',
-        version: 'v2.1',
+        version: `v${DEV_SERVER_VERSION}`,
         contentType: 'application/json',
       }),
     }),
@@ -3225,7 +6360,7 @@ const devServer = Bun.serve<WebSocketData>({
       const htmlContent = await htmlFile.text();
       return new Response(htmlContent, {
         headers: {
-          'Content-Type': 'text/html; charset=utf-8',
+          ...dashboardHeaders(IS_DEVELOPMENT === false),
           'X-APEX-Title': 'Tension Mapping Visualizer',
           'X-APEX-Subtitle': '[Edge Tempering][AI-Immunity Indexing][Real-time Color Generation][[Visualizer]]',
           'X-APEX-Domain': 'Edge Tempering',
@@ -3236,6 +6371,189 @@ const devServer = Bun.serve<WebSocketData>({
           'X-APEX-Component': 'tension-visualizer',
         },
       });
+    },
+    
+    // Enhanced Glossary Page - Using Bun's HTML import with HTMLRewriter for SSR
+    // Bun automatically bundles glossary-search-react.tsx and handles HMR
+    '/glossary': async (req) => {
+      try {
+        // Load initial stats for server-side rendering
+        const [totalRes, betTypesRes, rgRes] = await Promise.all([
+          fetch(`http://localhost:${WORKER_API_PORT || 3002}/api/glossary/search`).catch(() => null),
+          fetch(`http://localhost:${WORKER_API_PORT || 3002}/api/glossary/bet-types`).catch(() => null),
+          fetch(`http://localhost:${WORKER_API_PORT || 3002}/api/glossary/category/rg_compliance`).catch(() => null)
+        ]);
+
+        const [totalData, betTypesData, rgData] = await Promise.all([
+          totalRes?.json().catch(() => ({ count: 0 })) ?? Promise.resolve({ count: 0 }),
+          betTypesRes?.json().catch(() => ({ count: 0 })) ?? Promise.resolve({ count: 0 }),
+          rgRes?.json().catch(() => ({ count: 0 })) ?? Promise.resolve({ count: 0 })
+        ]);
+
+        // Load HTML template
+        const htmlFile = Bun.file('./templates/glossary.html');
+        const htmlContent = await htmlFile.text();
+
+        // Use HTMLRewriter to inject server-side data
+        const { createGlossaryRewriter } = await import('../templates/glossary-rewriter.ts');
+        const rewriter = createGlossaryRewriter({
+          version: PACKAGE_VERSION,
+          totalTerms: totalData.count ?? 0,
+          betTypeTerms: betTypesData.count ?? 0,
+          rgTerms: rgData.count ?? 0,
+          buildTime: new Date().toISOString()
+        });
+
+        // Transform HTML with server-side data
+        const transformedResponse = rewriter.transform(new Response(htmlContent));
+
+        return new Response(transformedResponse.body, {
+          headers: {
+            ...dashboardHeaders(IS_DEVELOPMENT === false),
+            'Content-Type': 'text/html',
+            'X-APEX-Title': 'Betting Glossary',
+            'X-APEX-Subtitle': '[Enhanced Search][Autocomplete][Term Relationships]',
+            'X-APEX-Domain': 'Glossary',
+            'X-APEX-Scope': 'Betting Terminology',
+            'X-APEX-Type': 'Reference',
+            'X-APEX-Version': PACKAGE_VERSION,
+            'X-APEX-Component': 'glossary-search',
+          },
+        });
+      } catch (error) {
+        console.error('Failed to render glossary:', error);
+        // Fallback to basic HTML
+        const htmlFile = Bun.file('./templates/glossary.html');
+        const htmlContent = await htmlFile.text();
+        return new Response(htmlContent, {
+          headers: {
+            ...dashboardHeaders(IS_DEVELOPMENT === false),
+            'Content-Type': 'text/html',
+          },
+        });
+      }
+    },
+    
+    // TES Lifecycle Dashboard - HTML with security hardening
+    '/tes-dashboard.html': async (req, server) => {
+      try {
+        // Rate limiting check
+        const rateLimitResult = checkDashboardRateLimit(req, server);
+        if (rateLimitResult && !rateLimitResult.allowed) {
+          return new Response(
+            `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Exceeded - TES Dashboard</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a12;
+      color: #e0e0ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #1a1a2e;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      text-align: center;
+      max-width: 500px;
+      border: 2px solid #2d2d4d;
+    }
+    h1 { color: #a02d2d; margin-bottom: 20px; }
+    p { color: #c0c0ff; margin-bottom: 20px; }
+    .retry-after { color: #5d5dad; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Rate Limit Exceeded</h1>
+    <p>Too many requests. Please try again later.</p>
+    <p class="retry-after">Retry after: ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds</p>
+  </div>
+</body>
+</html>`,
+            {
+              status: 429,
+              headers: {
+                ...dashboardHeaders(IS_DEVELOPMENT === false),
+                'Retry-After': String(Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)),
+                'X-RateLimit-Limit': '60',
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': String(rateLimitResult.resetAt),
+              },
+            }
+          );
+        }
+        
+        // Load TES dashboard HTML
+        const htmlFile = Bun.file('./templates/tes-dashboard.html');
+        const htmlContent = await htmlFile.text();
+        
+        // Apply security headers
+        const headers = dashboardHeaders(IS_DEVELOPMENT === false);
+        if (rateLimitResult) {
+          headers['X-RateLimit-Limit'] = '60';
+          headers['X-RateLimit-Remaining'] = String(rateLimitResult.remaining);
+          headers['X-RateLimit-Reset'] = String(rateLimitResult.resetAt);
+        }
+        
+        return new Response(htmlContent, {
+          headers,
+        });
+      } catch (error) {
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error - TES Dashboard</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a12;
+      color: #e0e0ff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: #1a1a2e;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+      text-align: center;
+      max-width: 500px;
+      border: 2px solid #2d2d4d;
+    }
+    h1 { color: #a02d2d; margin-bottom: 20px; }
+    p { color: #c0c0ff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ TES Dashboard Error</h1>
+    <p>An error occurred while loading the TES dashboard.</p>
+    <p style="font-size: 0.9em; color: #8080ff; margin-top: 20px;">
+      ${IS_DEVELOPMENT ? escapeHtml(error instanceof Error ? error.message : String(error)) : 'Please try again later or contact support.'}
+    </p>
+  </div>
+</body>
+</html>`;
+        return new Response(errorHtml, {
+          status: 500,
+          headers: dashboardHeaders(IS_DEVELOPMENT === false),
+        });
+      }
     },
     
     // 3. File Routes - Generated from static-routes.ts manifest
@@ -3327,10 +6645,365 @@ const devServer = Bun.serve<WebSocketData>({
       return jsonResponse(getAllEndpoints(), 200, {
         domain: 'dev',
         scope: 'endpoints',
-        version: 'v2.1',
+        version: `v${DEV_SERVER_VERSION}`,
         includeTiming: true,
         startTime,
       });
+    },
+    
+    // Endpoint Checker with Header Metadata Enrichment (TES-OPS-003)
+    // Tests all endpoints and captures headers with RG-compatible metadata enrichment
+    // Supports parameterized routes, TES domain config, and cookie verification
+    // TES-OPS-004.A.1: Endpoint Checker Version - ENDPOINT_CHECKER_VERSION imported from component-versions.ts
+    '/api/dev/endpoints/check': async (req) => {
+      const startTime = performance.now();
+      const requestId = crypto.randomUUID();
+      const ticketId = `TES-ENDPOINT-CHECK-${Date.now().toString(36).toUpperCase()}`;
+      
+      // Get TES domain configuration (TES-OPS-003.1, TES-OPS-003.4)
+      const tesConfig = getTESDomainConfigCached();
+      
+      // Known endpoints that set cookies (TES-OPS-003.6)
+      const cookieSettingEndpoints = [
+        '/api/auth/token', // JWT token acquisition
+        '/api/auth/refresh', // JWT refresh
+      ];
+      
+      // Example values for parameterized routes (TES-OPS-003.3)
+      const parameterExamples: Record<string, string> = {
+        ':id': 'test-id-123',
+        ':bookieId': 'pinnacle',
+        ':termId': 'bet-type-moneyline',
+        ':category': 'rg_compliance',
+        ':flag': 'enable-feature-x',
+        ':marketId': 'market-123',
+        ':key': 'feature-flag-key',
+      };
+      
+      try {
+        const endpoints = getAllEndpoints();
+        const results: Array<{
+          service: string;
+          endpoint: string;
+          method: string;
+          url: string;
+          status: number | 'error' | 'skipped';
+          statusText?: string;
+          responseTime?: number;
+          headers: Array<{
+            name: string;
+            value: string;
+            enriched: string; // RG-compatible serialized format
+            metadata: {
+              scope: string;
+              domain: string;
+              headerType: string;
+              metaPurpose: string;
+              version: string;
+              ticket: string;
+              bunApi: string;
+              timestamp: number;
+            };
+          }>;
+          hasSetCookie?: boolean; // TES-OPS-003.7: Cookie-setting verification
+          cookieDomain?: string; // TES-OPS-003.7: Cookie domain verification
+          skipReason?: string; // TES-OPS-003.8: Reason for skipping
+          error?: string;
+        }> = [];
+        
+        const skippedEndpoints: Array<{
+          service: string;
+          endpoint: string;
+          method: string;
+          reason: string;
+        }> = [];
+        
+        // Helper to enrich header with 8-dimensional metadata
+        const enrichHeader = (
+          headerName: string,
+          headerValue: string,
+          context: {
+            scope: 'AUTH' | 'STREAM' | 'REQUEST' | 'RESPONSE' | 'WEBSOCKET' | 'NETWORK_CONTROL';
+            domain: string;
+            headerType: 'SECURITY' | 'CLIENT_INFO' | 'NETWORK_CONTROL' | 'API_METADATA' | 'CORS' | 'CACHE' | 'CONTENT';
+            metaPurpose: string;
+            bunApi: string;
+            ticket: string;
+          }
+        ): { enriched: string; metadata: any } => {
+          const timestamp = Date.now();
+          const version = 'HTTP/1.1';
+          
+          // Determine scope based on header name
+          let scope = context.scope;
+          if (headerName.toLowerCase().includes('authorization') || headerName.toLowerCase().includes('cookie')) {
+            scope = 'AUTH';
+          } else if (headerName.toLowerCase().includes('content-type') || headerName.toLowerCase().includes('content-length')) {
+            scope = 'RESPONSE';
+          } else if (headerName.toLowerCase().includes('origin') || headerName.toLowerCase().includes('referer')) {
+            scope = 'REQUEST';
+          } else if (headerName.toLowerCase().includes('x-api') || headerName.toLowerCase().includes('x-request')) {
+            scope = 'RESPONSE';
+          }
+          
+          // RG-compatible serialization format
+          // Format: "Key:Value~[SCOPE][domain][HEADER_TYPE][META_PURPOSE][VERSION][TICKET][BUN_API][#REF:url][TIMESTAMP]"
+          const enriched = `${headerName}:${headerValue}~[${scope}][${context.domain}][${context.headerType}][${context.metaPurpose}][${version}][${context.ticket}][${context.bunApi}][#REF:https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/${headerName}][TIMESTAMP:${timestamp}]`;
+          
+          const metadata = {
+            scope,
+            domain: context.domain,
+            headerType: context.headerType,
+            metaPurpose: context.metaPurpose,
+            version,
+            ticket: context.ticket,
+            bunApi: context.bunApi,
+            timestamp,
+          };
+          
+          return { enriched, metadata };
+        };
+        
+        // Test all endpoints
+        for (const [serviceName, service] of Object.entries(endpoints)) {
+          for (const endpoint of service.endpoints) {
+            // TES-OPS-003.5: Document WebSocket endpoints (can't test with fetch)
+            if (endpoint.method === 'WS') {
+              skippedEndpoints.push({
+                service: serviceName,
+                endpoint: endpoint.path,
+                method: endpoint.method,
+                reason: 'WebSocket endpoint (cannot test with HTTP fetch)',
+              });
+              results.push({
+                service: serviceName,
+                endpoint: endpoint.path,
+                method: endpoint.method,
+                url: service.base + endpoint.path,
+                status: 'skipped',
+                headers: [],
+                skipReason: 'WebSocket endpoint (cannot test with HTTP fetch)',
+              });
+              continue;
+            }
+            
+            // TES-OPS-003.3: Extend Endpoint Checker for Parameterized Routes
+            // Replace parameterized segments with example values
+            let testPath = endpoint.path;
+            let hasParameters = false;
+            for (const [param, example] of Object.entries(parameterExamples)) {
+              if (testPath.includes(param)) {
+                testPath = testPath.replace(param, example);
+                hasParameters = true;
+              }
+            }
+            
+            // Use TES domain config for dev service (TES-OPS-003.4)
+            let baseUrl = service.base;
+            if (serviceName === 'dev') {
+              // Use TES_API_DOMAIN if configured, otherwise use service.base
+              baseUrl = tesConfig.isDevelopment ? service.base : tesConfig.apiBaseUrl;
+            }
+            
+            const url = baseUrl + testPath;
+            const isCookieEndpoint = cookieSettingEndpoints.some(ce => endpoint.path.startsWith(ce));
+            const checkStartTime = performance.now();
+            
+            try {
+              // Test endpoint with timeout
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+              
+              const response = await fetch(url, {
+                method: endpoint.method.split(',')[0].trim() || 'GET',
+                signal: controller.signal,
+                headers: {
+                  'User-Agent': 'WNCAAB-Endpoint-Checker/1.0',
+                  'X-Request-ID': requestId,
+                  'X-Ticket-ID': ticketId,
+                },
+              });
+              
+              clearTimeout(timeoutId);
+              const responseTime = performance.now() - checkStartTime;
+              
+              // Extract and enrich headers
+              const enrichedHeaders: Array<{
+                name: string;
+                value: string;
+                enriched: string;
+                metadata: any;
+              }> = [];
+              
+              // TES-OPS-003.7: Check for Set-Cookie header (cookie-setting verification)
+              let hasSetCookie = false;
+              let cookieDomain: string | undefined;
+              
+              response.headers.forEach((value, name) => {
+                // Check for Set-Cookie header
+                if (name.toLowerCase() === 'set-cookie') {
+                  hasSetCookie = true;
+                  // Extract domain from Set-Cookie header
+                  const domainMatch = value.match(/domain=([^;]+)/i);
+                  if (domainMatch) {
+                    cookieDomain = domainMatch[1].trim();
+                  }
+                }
+                
+                // Determine header type
+                let headerType: 'SECURITY' | 'CLIENT_INFO' | 'NETWORK_CONTROL' | 'API_METADATA' | 'CORS' | 'CACHE' | 'CONTENT' = 'NETWORK_CONTROL';
+                if (name.toLowerCase().includes('security') || name.toLowerCase().includes('xss') || name.toLowerCase().includes('frame') || name.toLowerCase().includes('csp')) {
+                  headerType = 'SECURITY';
+                } else if (name.toLowerCase().includes('x-api') || name.toLowerCase().includes('x-request') || name.toLowerCase().includes('x-response')) {
+                  headerType = 'API_METADATA';
+                } else if (name.toLowerCase().includes('access-control') || name.toLowerCase().includes('cors')) {
+                  headerType = 'CORS';
+                } else if (name.toLowerCase().includes('cache') || name.toLowerCase().includes('etag') || name.toLowerCase().includes('expires')) {
+                  headerType = 'CACHE';
+                } else if (name.toLowerCase().includes('content')) {
+                  headerType = 'CONTENT';
+                } else if (name.toLowerCase().includes('user-agent') || name.toLowerCase().includes('origin') || name.toLowerCase().includes('referer')) {
+                  headerType = 'CLIENT_INFO';
+                } else if (name.toLowerCase() === 'set-cookie') {
+                  headerType = 'SECURITY'; // Cookies are security-related
+                }
+                
+                // Use TES domain config for domain metadata (TES-OPS-003.4)
+                const domainForMetadata = serviceName === 'dev' 
+                  ? (tesConfig.isDevelopment ? 'wncaab-dev-server' : tesConfig.apiDomain)
+                  : serviceName;
+                
+                const enriched = enrichHeader(name, value, {
+                  scope: 'RESPONSE',
+                  domain: domainForMetadata,
+                  headerType,
+                  metaPurpose: endpoint.description || 'ENDPOINT_CHECK',
+                  bunApi: 'Bun.fetch',
+                  ticket: ticketId,
+                });
+                
+                enrichedHeaders.push({
+                  name,
+                  value,
+                  enriched: enriched.enriched,
+                  metadata: enriched.metadata,
+                });
+              });
+              
+              // TES-OPS-003.7: Verify cookie domain matches TES config if cookie is set
+              if (hasSetCookie && isCookieEndpoint) {
+                if (cookieDomain && cookieDomain !== tesConfig.cookieDomain && cookieDomain !== tesConfig.cookieDomain.replace(/^\./, '')) {
+                  console.warn(`[Endpoint Checker] Cookie domain mismatch for ${endpoint.path}: expected ${tesConfig.cookieDomain}, got ${cookieDomain}`);
+                }
+              }
+              
+              results.push({
+                service: serviceName,
+                endpoint: endpoint.path,
+                method: endpoint.method,
+                url,
+                status: response.status,
+                statusText: response.statusText,
+                responseTime: Math.round(responseTime * 100) / 100,
+                headers: enrichedHeaders,
+                hasSetCookie,
+                cookieDomain,
+              });
+            } catch (error) {
+              const responseTime = performance.now() - checkStartTime;
+              results.push({
+                service: serviceName,
+                endpoint: endpoint.path,
+                method: endpoint.method,
+                url,
+                status: 'error',
+                responseTime: Math.round(responseTime * 100) / 100,
+                headers: [],
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+        }
+        
+        // Generate summary statistics
+        const summary = {
+          total: results.length,
+          successful: results.filter(r => typeof r.status === 'number' && r.status >= 200 && r.status < 300).length,
+          failed: results.filter(r => r.status === 'error' || (typeof r.status === 'number' && (r.status < 200 || r.status >= 300))).length,
+          skipped: results.filter(r => r.status === 'skipped').length,
+          averageResponseTime: results
+            .filter(r => r.responseTime !== undefined)
+            .reduce((sum, r) => sum + (r.responseTime || 0), 0) / results.filter(r => r.responseTime !== undefined).length || 0,
+          cookieEndpoints: results.filter(r => r.hasSetCookie).length,
+        };
+        
+        // TES-OPS-003.8: Add Skipped Endpoints Report
+        const skippedReport = {
+          total: skippedEndpoints.length,
+          byReason: skippedEndpoints.reduce((acc, item) => {
+            acc[item.reason] = (acc[item.reason] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          endpoints: skippedEndpoints,
+        };
+        
+        // TES-OPS-003.6: Document Cookie Setting Endpoints
+        const cookieEndpointsReport = {
+          expected: cookieSettingEndpoints,
+          found: results.filter(r => r.hasSetCookie).map(r => ({
+            endpoint: r.endpoint,
+            url: r.url,
+            cookieDomain: r.cookieDomain,
+            matchesTESConfig: r.cookieDomain === tesConfig.cookieDomain || r.cookieDomain === tesConfig.cookieDomain.replace(/^\./, ''),
+          })),
+        };
+        
+        return jsonResponse({
+          ticket: ticketId,
+          requestId,
+          timestamp: new Date().toISOString(),
+          tesDomainConfig: {
+            apiDomain: tesConfig.apiDomain,
+            cookieDomain: tesConfig.cookieDomain,
+            apiBaseUrl: tesConfig.apiBaseUrl,
+            isDevelopment: tesConfig.isDevelopment,
+          },
+          summary,
+          skippedReport, // TES-OPS-003.8
+          cookieEndpointsReport, // TES-OPS-003.6, TES-OPS-003.7
+          results,
+          metadata: {
+            system: 'WNCAAB-Endpoint-Checker',
+            version: ENDPOINT_CHECKER_VERSION, // Updated for TES-OPS-003 features
+            enrichmentFormat: 'RG-compatible',
+            metadataDimensions: 8,
+            bunVersion: Bun.version,
+            features: [
+              'TES-OPS-003.1: TES_API_DOMAIN Configuration',
+              'TES-OPS-003.2: Dynamic Cookie Domain',
+              'TES-OPS-003.3: Parameterized Route Testing',
+              'TES-OPS-003.4: TES Domain Testing',
+              'TES-OPS-003.5: WebSocket Documentation',
+              'TES-OPS-003.6: Cookie Endpoint Documentation',
+              'TES-OPS-003.7: Cookie Verification',
+              'TES-OPS-003.8: Skipped Endpoints Report',
+            ],
+          },
+        }, 200, {
+          domain: 'dev',
+          scope: 'endpoints-check',
+          version: `v${ENDPOINT_CHECKER_VERSION}`,
+          includeTiming: true,
+          startTime,
+          requestId,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to check endpoints: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'endpoints-check', version: `v${ENDPOINT_CHECKER_VERSION}` }
+        );
+      }
     },
     
     // @PERF Critical: Real-time metrics with event-based tracking (10K+ RPS)
@@ -3443,7 +7116,7 @@ const devServer = Bun.serve<WebSocketData>({
         return jsonResponse(metrics, 200, {
           domain: 'dev',
           scope: 'metrics',
-          version: 'v2.1',
+          version: `v${DEV_SERVER_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -3461,10 +7134,56 @@ const devServer = Bun.serve<WebSocketData>({
         return jsonResponse(configs, 200, {
           domain: 'dev',
           scope: 'configs',
-          version: 'v2.1',
+          version: `v${DEV_SERVER_VERSION}`,
           includeTiming: true,
           startTime,
         });
+      } finally {
+        trackRequestEnd();
+      }
+    },
+    
+    // Color System API - Returns color palette and usage stats
+    '/api/dev/colors': async () => {
+      const startTime = performance.now();
+      trackRequestStart();
+      
+      try {
+        const { WNCAAB_COLORS, generateColorReport } = await import('../macros/color-macro.ts');
+        const colorReport = generateColorReport();
+        
+        // Build color data with metadata
+        const colors = Object.entries(WNCAAB_COLORS).map(([name, hex]) => ({
+          name,
+          hex,
+          used: colorReport.used.includes(name),
+          category: getColorCategory(name),
+        }));
+        
+        return jsonResponse({
+          colors,
+          stats: {
+            total: colorReport.total,
+            used: colorReport.used.length,
+            reserved: colorReport.unusedCount,
+            usedColors: colorReport.used,
+            reservedColors: colorReport.unused,
+          },
+          palette: WNCAAB_COLORS,
+          report: colorReport,
+        }, 200, {
+          domain: 'dev',
+          scope: 'colors',
+          version: `v${DEV_SERVER_VERSION}`,
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to get colors: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'colors', version: `v${DEV_SERVER_VERSION}` }
+        );
       } finally {
         trackRequestEnd();
       }
@@ -3533,7 +7252,7 @@ const devServer = Bun.serve<WebSocketData>({
             ...apiHeaders({
               domain: 'dev',
               scope: 'workers',
-              version: 'v2.1',
+              version: `v${DEV_SERVER_VERSION}`,
               contentType: 'application/json',
               includeTiming: true,
               startTime,
@@ -3552,7 +7271,7 @@ const devServer = Bun.serve<WebSocketData>({
             ...apiHeaders({
               domain: 'dev',
               scope: 'workers',
-              version: 'v2.1',
+              version: `v${DEV_SERVER_VERSION}`,
               contentType: 'application/json',
               includeTiming: true,
               startTime,
@@ -4300,11 +8019,11 @@ const devServer = Bun.serve<WebSocketData>({
         
         if (cached) {
           return jsonResponseWithMetadata(cached, 200, {
-            version: 'v1.4.2',
+            version: `v${GAUGE_API_VERSION}`,
           }, {
             domain: 'gauge',
             scope: 'womens-sports',
-            version: 'v1.4.2',
+            version: `v${GAUGE_API_VERSION}`,
             includeTiming: true,
             startTime,
           });
@@ -4317,11 +8036,11 @@ const devServer = Bun.serve<WebSocketData>({
         gaugeCache.set(cacheKey, result, 60);
         
         return jsonResponseWithMetadata(result, 200, {
-          version: 'v1.4.2',
+          version: `v${GAUGE_API_VERSION}`,
         }, {
           domain: 'gauge',
           scope: 'womens-sports',
-          version: 'v1.4.2',
+          version: `v${GAUGE_API_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -4329,7 +8048,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `WNBATOR gauge calculation failed: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'gauge', scope: 'womens-sports', version: 'v1.4.2' }
+          { domain: 'gauge', scope: 'womens-sports', version: `v${GAUGE_API_VERSION}` }
         );
       }
     },
@@ -4381,7 +8100,7 @@ const devServer = Bun.serve<WebSocketData>({
       }, 200, {
         domain: 'ai',
         scope: 'models',
-        version: 'v1.4.2',
+        version: `v${AI_MAPARSE_VERSION}`,
         includeTiming: true,
         startTime,
       });
@@ -4422,7 +8141,7 @@ const devServer = Bun.serve<WebSocketData>({
                 'prices',
                 body.prices,
                 'Array of numbers or CSV string',
-                { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+                { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
               );
             }
           } else {
@@ -4431,7 +8150,7 @@ const devServer = Bun.serve<WebSocketData>({
               'prices',
               null,
               'Array of numbers or CSV string',
-              { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+              { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
             );
           }
         } else {
@@ -4446,7 +8165,7 @@ const devServer = Bun.serve<WebSocketData>({
               'prices',
               null,
               'CSV format: "100,102,105,110,118"',
-              { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+              { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
             );
           }
           
@@ -4459,7 +8178,7 @@ const devServer = Bun.serve<WebSocketData>({
             'prices',
             prices,
             'CSV format with positive numbers: "100,102,105"',
-            { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+            { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
           );
         }
         
@@ -4469,7 +8188,7 @@ const devServer = Bun.serve<WebSocketData>({
             'prices',
             prices.length,
             'At least 2 numbers',
-            { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+            { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
           );
         }
         
@@ -4479,11 +8198,11 @@ const devServer = Bun.serve<WebSocketData>({
         
         if (cached) {
           return jsonResponseWithMetadata(cached, 200, {
-            version: 'v1.4.2',
+            version: `v${AI_MAPARSE_VERSION}`,
           }, {
             domain: 'ai',
             scope: 'maparse',
-            version: 'v1.4.2',
+            version: `v${AI_MAPARSE_VERSION}`,
             includeTiming: true,
             startTime,
           });
@@ -4567,7 +8286,7 @@ const devServer = Bun.serve<WebSocketData>({
         const headers = apiHeaders({
           domain: 'ai',
           scope: 'maparse',
-          version: 'v1.4.2',
+          version: `v${AI_MAPARSE_VERSION}`,
           contentType: 'application/json',
           includeTiming: true,
           startTime,
@@ -4583,7 +8302,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Maparse analysis failed: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'ai', scope: 'maparse', version: 'v1.4.2' }
+          { domain: 'ai', scope: 'maparse', version: `v${AI_MAPARSE_VERSION}` }
         );
       }
     },
@@ -4599,18 +8318,18 @@ const devServer = Bun.serve<WebSocketData>({
           'threshold',
           null,
           'Number between 0.0 and 1.0, or arithmetic expression (e.g., "0.7-.0012")',
-          { domain: 'validate', scope: 'threshold', version: 'v1.4.2' }
+          { domain: 'validate', scope: 'threshold', version: `v${VALIDATION_THRESHOLD_VERSION}` }
         );
       }
       
       try {
         const result = validateThreshold(thresholdParam);
         return jsonResponseWithMetadata(result, 200, {
-          version: 'v1.4.2',
+          version: `v${VALIDATION_THRESHOLD_VERSION}`,
         }, {
           domain: 'validate',
           scope: 'threshold',
-          version: 'v1.4.2',
+          version: `v${VALIDATION_THRESHOLD_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -4620,7 +8339,7 @@ const devServer = Bun.serve<WebSocketData>({
           'threshold',
           thresholdParam,
           'Number between 0.0 and 1.0',
-          { domain: 'validate', scope: 'threshold', version: 'v1.4.2' }
+          { domain: 'validate', scope: 'threshold', version: `v${VALIDATION_THRESHOLD_VERSION}` }
         );
       }
     },
@@ -4690,7 +8409,7 @@ const devServer = Bun.serve<WebSocketData>({
             'points',
             controlPoints.length,
             'At least 2 points',
-            { domain: 'spline', scope: 'render', version: 'v1.0' }
+            { domain: 'spline', scope: 'render', version: `v${SPLINE_API_VERSION}` }
           );
         }
         
@@ -4745,7 +8464,7 @@ const devServer = Bun.serve<WebSocketData>({
         }, 200, {
           domain: 'spline',
           scope: 'render',
-          version: 'v1.0',
+          version: `v${SPLINE_API_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -4760,7 +8479,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Spline computation failed: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'spline', scope: 'render', version: 'v1.0' }
+          { domain: 'spline', scope: 'render', version: `v${SPLINE_API_VERSION}` }
         );
       } finally {
         // Decrement active requests
@@ -4788,7 +8507,7 @@ const devServer = Bun.serve<WebSocketData>({
             'path',
             body.path,
             'Array of {x, y, t?} objects',
-            { domain: 'spline', scope: 'predict', version: 'v1.0' }
+            { domain: 'spline', scope: 'predict', version: `v${SPLINE_API_VERSION}` }
           );
         }
         
@@ -4798,7 +8517,7 @@ const devServer = Bun.serve<WebSocketData>({
             'path',
             body.path.length,
             'At least 2 points',
-            { domain: 'spline', scope: 'predict', version: 'v1.0' }
+            { domain: 'spline', scope: 'predict', version: `v${SPLINE_API_VERSION}` }
           );
         }
         
@@ -4809,7 +8528,7 @@ const devServer = Bun.serve<WebSocketData>({
             'horizon',
             horizon,
             '1-10000',
-            { domain: 'spline', scope: 'predict', version: 'v1.0' }
+            { domain: 'spline', scope: 'predict', version: `v${SPLINE_API_VERSION}` }
           );
         }
         
@@ -4839,7 +8558,7 @@ const devServer = Bun.serve<WebSocketData>({
         }, 200, {
           domain: 'spline',
           scope: 'predict',
-          version: 'v1.0',
+          version: `v${SPLINE_API_VERSION}`,
           includeTiming: true,
           startTime: start / 1_000_000,
         });
@@ -4848,7 +8567,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Prediction failed: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'spline', scope: 'predict', version: 'v1.0' }
+          { domain: 'spline', scope: 'predict', version: `v${SPLINE_API_VERSION}` }
         );
       }
     },
@@ -4869,7 +8588,7 @@ const devServer = Bun.serve<WebSocketData>({
             'name/config',
             { name: body.name, config: body.config },
             'Both name and config required',
-            { domain: 'spline', scope: 'preset', version: 'v1.0' }
+            { domain: 'spline', scope: 'preset', version: `v${SPLINE_API_VERSION}` }
           );
         }
         
@@ -4909,14 +8628,14 @@ const devServer = Bun.serve<WebSocketData>({
         }, 201, {
           domain: 'spline',
           scope: 'preset',
-          version: 'v1.0',
+          version: `v${SPLINE_API_VERSION}`,
         });
       } catch (error) {
         console.error('[Spline] Store preset error:', error);
         return errorResponse(
           `Failed to store preset: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'spline', scope: 'preset', version: 'v1.0' }
+          { domain: 'spline', scope: 'preset', version: `v${SPLINE_API_VERSION}` }
         );
       }
     },
@@ -5128,22 +8847,25 @@ const devServer = Bun.serve<WebSocketData>({
             features: ['hex', 'hsl', 'opacity', 'width', 'relation'],
           },
           enhanced_cli: {
-            version: '1.4.2',
+            version: GAUGE_API_VERSION, // Shared version for CLI features
             features: {
               wnbator_gauge: {
                 available: true,
                 api: '/api/gauge/womens-sports',
                 description: 'WNBATOR 5D tensor gauge for betting streams',
+                version: GAUGE_API_VERSION,
               },
               ai_maparse: {
                 available: true,
                 api: '/api/ai/maparse',
                 description: 'AI auto-maparse curve pattern detection',
+                version: AI_MAPARSE_VERSION,
               },
               threshold_validator: {
                 available: true,
                 api: '/api/validate/threshold',
                 description: 'Threshold validator with auto-correction',
+                version: VALIDATION_THRESHOLD_VERSION,
               },
             },
           },
@@ -5157,7 +8879,7 @@ const devServer = Bun.serve<WebSocketData>({
         return jsonResponse(status, 200, {
           domain: 'dev',
           scope: 'status',
-          version: 'v2.1',
+          version: `v${DEV_SERVER_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -5165,7 +8887,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'dev', scope: 'status', version: 'v2.1' }
+          { domain: 'dev', scope: 'status', version: `v${DEV_SERVER_VERSION}` }
         );
       }
     },
@@ -5304,7 +9026,7 @@ const devServer = Bun.serve<WebSocketData>({
           }, 503, {
             domain: 'dev',
             scope: 'event-loop',
-            version: 'v1.0',
+            version: `v${DEV_SERVER_VERSION}`,
             includeTiming: true,
             startTime,
           });
@@ -5345,7 +9067,7 @@ const devServer = Bun.serve<WebSocketData>({
         return jsonResponse(response, 200, {
           domain: 'dev',
           scope: 'event-loop',
-          version: 'v1.0',
+          version: `v${DEV_SERVER_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -5353,7 +9075,495 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to get event loop metrics: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'dev', scope: 'event-loop', version: 'v1.0' }
+          { domain: 'dev', scope: 'event-loop', version: `v${DEV_SERVER_VERSION}` }
+        );
+      }
+    },
+    
+    // @ROUTE GET /api/dev/versions
+    // TES-OPS-004.B.6: Component Versions Endpoint - Enhanced with VersionRegistryLoader
+    '/api/dev/versions': async (req) => {
+      const startTime = performance.now();
+      
+      try {
+        // Initialize VersionRegistryLoader
+        const loader = getVersionRegistryLoader();
+        await loader.initialize();
+        
+        // Get all displayable entities (entities that should be shown in UI)
+        const displayableEntities = loader.getDisplayableEntities();
+        
+        // Build entity map with full details
+        const entities = displayableEntities.map(entity => ({
+          id: entity.id,
+          name: entity.name,
+          type: entity.type,
+          currentVersion: entity.currentVersion,
+          versionRead: entity.versionRead,
+          versionError: entity.versionError,
+          updateStrategy: entity.updateStrategy,
+          parentVersionId: entity.parentVersionId,
+          description: entity.description,
+          files: entity.files.map(f => ({
+            path: f.path,
+            pattern: f.pattern,
+            required: f.required,
+            defaultVersion: f.defaultVersion,
+          })),
+          apiEndpointPrefix: entity.apiEndpointPrefix,
+          cliCommandName: entity.cliCommandName,
+          displayInUi: entity.displayInUi,
+        }));
+        
+        // Group entities by type for better organization
+        const entitiesByType: Record<string, typeof entities> = {};
+        for (const entity of entities) {
+          if (!entitiesByType[entity.type]) {
+            entitiesByType[entity.type] = [];
+          }
+          entitiesByType[entity.type].push(entity);
+        }
+        
+        // Legacy compatibility: maintain old componentVersions format
+        const componentVersions: Record<string, string> = {};
+        for (const entity of displayableEntities) {
+          if (entity.displayInUi && entity.versionRead && !entity.versionError) {
+            componentVersions[entity.name] = entity.currentVersion;
+          }
+        }
+        
+        // Get global entities for package/api version
+        const globalMain = loader.getEntity('global:main');
+        const globalApiVersion = loader.getEntity('global:api-version');
+        const packageVersion = globalMain?.currentVersion || packageInfo.version || '3.1.0';
+        const apiVersion = globalApiVersion?.currentVersion || API_VERSION;
+        
+        // Validate registry
+        const validation = loader.validateRegistry();
+        
+        return jsonResponse({
+          // Legacy format for backward compatibility
+          package: {
+            version: packageVersion,
+            name: packageInfo.name || 'wncaab-perf-v3.1',
+            description: packageInfo.description || 'WNCAAB Performance Metrics & Visualization',
+          },
+          api: {
+            version: apiVersion,
+            description: 'Tension Mapping API version',
+          },
+          components: componentVersions,
+          
+          // New comprehensive format using VersionRegistryLoader
+          entities: {
+            all: entities,
+            byType: entitiesByType,
+            displayable: displayableEntities.map(e => ({
+              id: e.id,
+              name: e.name,
+              type: e.type,
+              currentVersion: e.currentVersion,
+              versionRead: e.versionRead,
+              versionError: e.versionError,
+              updateStrategy: e.updateStrategy,
+              parentVersionId: e.parentVersionId,
+            })),
+          },
+          
+          // Registry validation status
+          validation: {
+            valid: validation.valid,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            info: validation.info,
+          },
+          
+          // Legacy endpointVersions for backward compatibility
+          endpointVersions: {
+            // Glossary API - All endpoints use Betting Glossary version
+            glossary: {
+              version: BETTING_GLOSSARY_VERSION,
+              component: 'Betting Glossary',
+              endpoints: [
+                '/api/glossary/term/:termId',
+                '/api/glossary/search',
+                '/api/glossary/category/:category',
+                '/api/glossary/bet-types',
+                '/api/glossary/suggestions',
+                '/api/glossary/term/:termId/related'
+              ],
+              description: 'Enhanced betting terminology API with search, autocomplete, and relationships',
+            },
+            // Gauge API - WNBATOR Women's Sports
+            gauge: {
+              version: GAUGE_API_VERSION,
+              component: 'Gauge API',
+              endpoints: ['/api/gauge/womens-sports'],
+              description: 'WNBATOR Gauge API for women\'s sports metrics',
+            },
+            // AI Maparse API
+            ai: {
+              version: AI_MAPARSE_VERSION,
+              component: 'AI Maparse',
+              endpoints: [
+                '/api/ai/maparse',
+                '/api/ai/models/status'
+              ],
+              description: 'AI-powered auto-maparse curve detection and model management',
+            },
+            // Validation Threshold API
+            validate: {
+              version: VALIDATION_THRESHOLD_VERSION,
+              component: 'Validation Threshold',
+              endpoints: ['/api/validate/threshold'],
+              description: 'Threshold validator with auto-correction capabilities',
+            },
+            // Tension Mapping API
+            tension: {
+              version: TENSION_API_VERSION,
+              component: 'Tension API',
+              endpoints: [
+                '/api/tension/map',
+                '/api/tension/batch'
+              ],
+              description: 'Tension mapping and batch processing API',
+            },
+            // Spline API
+            spline: {
+              version: SPLINE_API_VERSION,
+              component: 'Spline API',
+              endpoints: [
+                '/api/spline/render',
+                '/api/spline/predict',
+                '/api/spline/preset/store'
+              ],
+              description: 'Spline path rendering, prediction, and preset management',
+            },
+            // Dev API - Core dev server endpoints
+            dev: {
+              version: DEV_SERVER_VERSION,
+              component: 'Dev Server',
+              endpoints: [
+                '/api/dev/status',
+                '/api/dev/metrics',
+                '/api/dev/configs',
+                '/api/dev/workers',
+                '/api/dev/endpoints',
+                '/api/dev/versions',
+                '/api/dev/colors',
+                '/api/dev/bump-version',
+                '/api/dev/event-loop'
+              ],
+              description: 'Development server API for monitoring, configuration, and management',
+            },
+            // Endpoint Checker - Critical operational tool
+            endpointChecker: {
+              version: ENDPOINT_CHECKER_VERSION,
+              component: 'Endpoint Checker',
+              endpoints: ['/api/dev/endpoints/check'],
+              description: 'Critical operational tool for endpoint verification and health checks',
+            },
+            // Bookmaker API - Registry management
+            bookmakers: {
+              version: '1.0.0',
+              component: 'Bookmaker Registry',
+              endpoints: [
+                '/api/bookmakers',
+                '/api/bookmakers/:id',
+                '/api/bookmakers/:id/flags/:flag',
+                '/api/bookmakers/:id/rollout'
+              ],
+              description: 'Bookmaker registry and feature flag management',
+            },
+            // Registry API - R2 and manifest management
+            registry: {
+              version: '1.0.0',
+              component: 'Registry API',
+              endpoints: [
+                '/api/registry/bookmakers',
+                '/api/registry/profile/:bookieId',
+                '/api/registry/manifests/:bookieId',
+                '/api/registry/tiers',
+                '/api/registry/r2'
+              ],
+              description: 'Registry API for R2 URLs, profiles, manifests, and tier distribution',
+            },
+            // Bet Type Detection API
+            betType: {
+              version: '1.0.0',
+              component: 'Bet Type Detection',
+              endpoints: [
+                '/api/bet-type/detect/:bookieId/:marketId',
+                '/api/bet-type/detect',
+                '/api/bet-type/stats'
+              ],
+              description: 'Bet-type pattern detection and statistics',
+            },
+            // Feature Flags API
+            featureFlags: {
+              version: '1.0.0',
+              component: 'Feature Flags',
+              endpoints: [
+                '/api/feature-flags',
+                '/api/feature-flags/:key/enable',
+                '/api/feature-flags/:key/disable'
+              ],
+              description: 'Feature flag management and control',
+            },
+            // Feeds API
+            feeds: {
+              version: '1.0.0',
+              component: 'Feeds API',
+              endpoints: ['/api/feeds/matrix'],
+              description: 'Complete feed matrix with DO, KV, flags, and env mappings',
+            },
+            // Shadow WebSocket API
+            shadowWs: {
+              version: '1.0.0',
+              component: 'Shadow WebSocket',
+              endpoints: [
+                '/api/shadow-ws/status',
+                '/api/shadow-ws/health'
+              ],
+              description: 'Shadow WebSocket server status and health monitoring',
+            },
+            // System API - Lifecycle and workers
+            system: {
+              version: '1.0.0',
+              component: 'System API',
+              endpoints: [
+                '/api/lifecycle/health',
+                '/api/lifecycle/export',
+                '/api/system/workers'
+              ],
+              description: 'System lifecycle management and worker monitoring',
+            },
+          },
+          // Group endpoints by version for easy reference
+          endpointsByVersion: {
+            [BETTING_GLOSSARY_VERSION]: {
+              component: 'Betting Glossary',
+              endpoints: [
+                '/api/glossary/term/:termId',
+                '/api/glossary/search',
+                '/api/glossary/category/:category',
+                '/api/glossary/bet-types',
+                '/api/glossary/suggestions',
+                '/api/glossary/term/:termId/related'
+              ],
+            },
+            [GAUGE_API_VERSION]: {
+              component: 'Gauge API',
+              endpoints: ['/api/gauge/womens-sports'],
+            },
+            [AI_MAPARSE_VERSION]: {
+              component: 'AI Maparse',
+              endpoints: ['/api/ai/maparse', '/api/ai/models/status'],
+            },
+            [VALIDATION_THRESHOLD_VERSION]: {
+              component: 'Validation Threshold',
+              endpoints: ['/api/validate/threshold'],
+            },
+            [TENSION_API_VERSION]: {
+              component: 'Tension API',
+              endpoints: ['/api/tension/map', '/api/tension/batch'],
+            },
+            [SPLINE_API_VERSION]: {
+              component: 'Spline API',
+              endpoints: ['/api/spline/render', '/api/spline/predict', '/api/spline/preset/store'],
+            },
+            [DEV_SERVER_VERSION]: {
+              component: 'Dev Server',
+              endpoints: [
+                '/api/dev/status',
+                '/api/dev/metrics',
+                '/api/dev/configs',
+                '/api/dev/workers',
+                '/api/dev/endpoints',
+                '/api/dev/versions',
+                '/api/dev/colors',
+                '/api/dev/bump-version',
+                '/api/dev/event-loop'
+              ],
+            },
+            [ENDPOINT_CHECKER_VERSION]: {
+              component: 'Endpoint Checker',
+              endpoints: ['/api/dev/endpoints/check'],
+            },
+          },
+          metadata: {
+            totalEntities: displayableEntities.length,
+            totalComponents: Object.keys(componentVersions).length,
+            totalEndpointGroups: Object.keys({
+              glossary: true,
+              gauge: true,
+              ai: true,
+              validate: true,
+              tension: true,
+              spline: true,
+              dev: true,
+              endpointChecker: true,
+              bookmakers: true,
+              registry: true,
+              betType: true,
+              featureFlags: true,
+              feeds: true,
+              shadowWs: true,
+              system: true,
+            }).length,
+            lastUpdated: new Date().toISOString(),
+            bunVersion: Bun.version,
+            note: 'All component versions are managed by scripts/bump.ts utility. Entity versions are dynamically read from files using VersionRegistryLoader. Endpoint versions dynamically reference component versions from src/config/component-versions.ts',
+          },
+        }, 200, {
+          domain: 'dev',
+          scope: 'versions',
+          version: `v${DEV_SERVER_VERSION}`,
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to retrieve component versions: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'versions', version: `v${DEV_SERVER_VERSION}` }
+        );
+      }
+    },
+    
+    // @ROUTE POST /api/dev/bump-version
+    // TES-OPS-004.B.7: Version Bump endpoint - Enhanced with targeted entity support
+    '/api/dev/bump-version': async (req) => {
+      const startTime = performance.now();
+      
+      if (req.method !== 'POST') {
+        return jsonResponse({
+          error: 'Method not allowed',
+          message: 'Only POST requests are supported',
+        }, 405, {
+          domain: 'dev',
+          scope: 'bump-version',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      }
+
+      try {
+        const body = await req.json().catch(() => ({})) as { 
+          type?: 'major' | 'minor' | 'patch';
+          entity?: string;
+        };
+        const type = body.type || 'patch';
+        const entityId = body.entity; // Optional: if provided, perform targeted bump
+
+        if (!['major', 'minor', 'patch'].includes(type)) {
+          return validationErrorResponse(
+            `Invalid version type: ${type}. Must be 'major', 'minor', or 'patch'`,
+            ['type'],
+            {
+              domain: 'dev',
+              scope: 'bump-version',
+              version: 'v1.0',
+              includeTiming: true,
+              startTime,
+            }
+          );
+        }
+
+        // Import bump utility
+        const { bumpVersion, getCurrentVersion } = await import('./bump.ts');
+        
+        // If entity is specified, validate it exists
+        if (entityId) {
+          const loader = getVersionRegistryLoader();
+          await loader.initialize();
+          const entity = loader.getEntity(entityId);
+          
+          if (!entity) {
+            return validationErrorResponse(
+              `Entity not found: ${entityId}. Use /api/dev/versions to see available entities.`,
+              ['entity'],
+              {
+                domain: 'dev',
+                scope: 'bump-version',
+                version: 'v1.0',
+                includeTiming: true,
+                startTime,
+              }
+            );
+          }
+          
+          // Get affected entities for preview
+          const affectedEntities = loader.getAffectedEntities(entityId);
+          
+          // Perform targeted version bump
+          await bumpVersion(type as 'major' | 'minor' | 'patch', entityId);
+          
+          // Refresh loader to get updated versions
+          await loader.refreshAll();
+          
+          const updatedEntity = loader.getEntity(entityId);
+          const updatedAffected = affectedEntities.map(e => {
+            const updated = loader.getEntity(e.id);
+            return {
+              id: e.id,
+              name: e.name,
+              oldVersion: e.currentVersion,
+              newVersion: updated?.currentVersion || e.currentVersion,
+            };
+          });
+
+          return jsonResponse({
+            success: true,
+            message: `Targeted version bump successful: ${entity.name} (${entityId})`,
+            type: type.toUpperCase(),
+            entity: {
+              id: entityId,
+              name: entity.name,
+              oldVersion: entity.currentVersion,
+              newVersion: updatedEntity?.currentVersion || entity.currentVersion,
+            },
+            affectedEntities: updatedAffected,
+            timestamp: new Date().toISOString(),
+          }, 200, {
+            domain: 'dev',
+            scope: 'bump-version',
+            version: 'v1.0',
+            includeTiming: true,
+            startTime,
+          });
+        } else {
+          // Global bump (no entity specified)
+          // Get current version before bump
+          const oldVersion = await getCurrentVersion();
+          
+          // Perform global version bump
+          await bumpVersion(type as 'major' | 'minor' | 'patch');
+          
+          // Get new version after bump
+          const newVersion = await getCurrentVersion();
+
+          return jsonResponse({
+            success: true,
+            message: `Global version bumped successfully from v${oldVersion} to v${newVersion}`,
+            oldVersion: `v${oldVersion}`,
+            newVersion: `v${newVersion}`,
+            type: type.toUpperCase(),
+            timestamp: new Date().toISOString(),
+          }, 200, {
+            domain: 'dev',
+            scope: 'bump-version',
+            version: 'v1.0',
+            includeTiming: true,
+            startTime,
+          });
+        }
+      } catch (error) {
+        return errorResponse(
+          `Failed to bump version: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'bump-version', version: 'v1.0' }
         );
       }
     },
@@ -5395,7 +9605,7 @@ const devServer = Bun.serve<WebSocketData>({
         // Use new Bun.SQL registry (lib/registry.ts)
         const { getRegistry } = await import('../lib/registry.ts');
         const registry = getRegistry();
-        const bookmakers = await registry.getAll();
+        const bookmakers = await registry.findAll();
         
         return jsonResponse({
           bookmakers,
@@ -5918,7 +10128,7 @@ const devServer = Bun.serve<WebSocketData>({
           return errorResponse(`Term not found: ${termId}`, 404, {
             domain: 'glossary',
             scope: 'term',
-            version: 'v1.0',
+            version: `v${BETTING_GLOSSARY_VERSION}`,
           });
         }
         
@@ -5927,7 +10137,7 @@ const devServer = Bun.serve<WebSocketData>({
         }, 200, {
           domain: 'glossary',
           scope: 'term',
-          version: 'v1.0',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -5935,7 +10145,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to get term: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'glossary', scope: 'term', version: 'v1.0' }
+          { domain: 'glossary', scope: 'term', version: `v${BETTING_GLOSSARY_VERSION}` }
         );
       }
     },
@@ -5951,16 +10161,58 @@ const devServer = Bun.serve<WebSocketData>({
         const { BettingGlossaryRegistry } = await import('../lib/betting-glossary.ts');
         const registry = BettingGlossaryRegistry.getInstance();
         
-        const terms = keyword ? registry.searchTerms(keyword) : registry.getAllTerms();
+        let terms: any[];
+        let count: number;
+        let searchResults: any[] | undefined;
+        
+        if (keyword) {
+          // Perform ranked search - returns terms sorted by relevance
+          terms = registry.search(keyword);
+          count = terms.length;
+          
+          // Calculate scores for display (re-run search logic to get scores)
+          // Note: The search() method returns sorted terms but doesn't expose scores
+          // For now, we'll indicate ranking is active
+          searchResults = terms.map((term, index) => ({
+            term,
+            rank: index + 1,
+            relevance: 'high' // Top results are most relevant
+          }));
+        } else {
+          // Return all terms if no keyword
+          terms = registry.getAllTerms();
+          count = terms.length;
+        }
         
         return jsonResponse({
-          keyword,
+          keyword: keyword || undefined,
           terms,
-          count: terms.length,
+          count,
+          ranked: !!keyword, // Indicates results are ranked by relevance
+          scoring: keyword ? {
+            algorithm: 'relevance-ranking',
+            description: 'Smart search with multi-factor scoring',
+            maxScore: 100,
+            scoreBreakdown: {
+              exactTermMatch: { points: 100, description: 'Exact match on term name' },
+              partialTermMatch: { points: 50, description: 'Partial match in term name' },
+              exactAbbreviationMatch: { points: 80, description: 'Exact match on abbreviation' },
+              partialAbbreviationMatch: { points: 40, description: 'Partial match in abbreviation' },
+              exactSynonymMatch: { points: 70, description: 'Exact match on synonym' },
+              partialSynonymMatch: { points: 35, description: 'Partial match in synonym' },
+              multiWordMatch: { points: 10, description: 'Per word match bonus' },
+              definitionMatch: { points: 20, description: 'Match in definition' },
+              tagMatch: { points: 15, description: 'Match in tags' },
+              exampleMatch: { points: 5, description: 'Match in examples' },
+              basicComplexityBoost: { points: 2, description: 'Boost for basic complexity terms' }
+            },
+            sortOrder: 'descending',
+            note: 'Results are automatically sorted by relevance score (highest first)'
+          } : undefined
         }, 200, {
           domain: 'glossary',
           scope: 'search',
-          version: 'v1.0',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -5968,7 +10220,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to search glossary: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'glossary', scope: 'search', version: 'v1.0' }
+          { domain: 'glossary', scope: 'search', version: `v${BETTING_GLOSSARY_VERSION}` }
         );
       }
     },
@@ -5991,7 +10243,7 @@ const devServer = Bun.serve<WebSocketData>({
         }, 200, {
           domain: 'glossary',
           scope: 'category',
-          version: 'v1.0',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -5999,7 +10251,7 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to get category terms: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'glossary', scope: 'category', version: 'v1.0' }
+          { domain: 'glossary', scope: 'category', version: `v${BETTING_GLOSSARY_VERSION}` }
         );
       }
     },
@@ -6021,7 +10273,7 @@ const devServer = Bun.serve<WebSocketData>({
         }, 200, {
           domain: 'glossary',
           scope: 'bet-types',
-          version: 'v1.0',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
           includeTiming: true,
           startTime,
         });
@@ -6029,7 +10281,115 @@ const devServer = Bun.serve<WebSocketData>({
         return errorResponse(
           `Failed to get bet-type terms: ${error instanceof Error ? error.message : String(error)}`,
           500,
-          { domain: 'glossary', scope: 'bet-types', version: 'v1.0' }
+          { domain: 'glossary', scope: 'bet-types', version: `v${BETTING_GLOSSARY_VERSION}` }
+        );
+      }
+    },
+    
+    // @ROUTE GET /api/glossary/suggestions
+    '/api/glossary/suggestions': async (req) => {
+      const startTime = performance.now();
+      
+      try {
+        const url = new URL(req.url);
+        const query = url.searchParams.get('q') || '';
+        const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+        
+        const { BettingGlossaryRegistry } = await import('../lib/betting-glossary.ts');
+        const registry = BettingGlossaryRegistry.getInstance();
+        
+        const suggestions = registry.getSuggestions(query, limit);
+        
+        return jsonResponse({
+          query,
+          suggestions,
+          count: suggestions.length,
+        }, 200, {
+          domain: 'glossary',
+          scope: 'suggestions',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to get suggestions: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'glossary', scope: 'suggestions', version: `v${BETTING_GLOSSARY_VERSION}` }
+        );
+      }
+    },
+    
+    // @ROUTE GET /api/glossary/term/:termId/related
+    '/api/glossary/term/:termId/related': async (req: BunRequest<'/api/glossary/term/:termId/related'>) => {
+      const startTime = performance.now();
+      
+      try {
+        const termId = req.params.termId;
+        const url = new URL(req.url);
+        const limit = parseInt(url.searchParams.get('limit') || '10', 10);
+        
+        const { BettingGlossaryRegistry } = await import('../lib/betting-glossary.ts');
+        const registry = BettingGlossaryRegistry.getInstance();
+        
+        const term = registry.getTerm(termId);
+        if (!term) {
+          return errorResponse(`Term not found: ${termId}`, 404, {
+            domain: 'glossary',
+            scope: 'related',
+            version: `v${BETTING_GLOSSARY_VERSION}`,
+          });
+        }
+        
+        const relatedTerms = registry.getRelatedTerms(termId, limit);
+        
+        // Build relationship metadata
+        const relationships = {
+          direct: [] as string[], // relatedTerms field
+          seeAlso: [] as string[], // seeAlso field
+          sameCategory: [] as string[], // Same category terms
+        };
+        
+        if (term.relatedTerms) {
+          relationships.direct = term.relatedTerms;
+        }
+        if (term.seeAlso) {
+          relationships.seeAlso = term.seeAlso;
+        }
+        
+        // Find same category terms
+        const categoryTerms = registry.getCategory(term.category);
+        relationships.sameCategory = categoryTerms
+          .filter(t => t.id !== termId)
+          .slice(0, 5)
+          .map(t => t.id);
+        
+        return jsonResponse({
+          term: {
+            id: term.id,
+            term: term.term,
+            category: term.category,
+          },
+          relatedTerms,
+          count: relatedTerms.length,
+          relationships,
+          relationshipTypes: {
+            direct: 'Directly related terms (explicit relationships)',
+            seeAlso: 'See also terms (cross-references)',
+            sameCategory: 'Terms in the same category',
+          },
+        }, 200, {
+          domain: 'glossary',
+          scope: 'related',
+          version: `v${BETTING_GLOSSARY_VERSION}`,
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to get related terms: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'glossary', scope: 'related', version: `v${BETTING_GLOSSARY_VERSION}` }
         );
       }
     },
@@ -6500,39 +10860,670 @@ const devServer = Bun.serve<WebSocketData>({
       }
     },
     
-    // Registry Dashboard Route - HTML import
+    // Registry Dashboard Route - HTML import with security hardening
     '/registry': async (req, server) => {
       try {
-        // @BUN HTML import - Bun automatically bundles and serves HTML files
-        const registryHtml = await import('../index.html');
-        // Handle both function and HTMLBundle exports
-        let html: string;
-        const defaultExport = registryHtml.default;
-        if (typeof defaultExport === 'function') {
-          html = await (defaultExport as unknown as (req: Request, env?: any) => Promise<string>)(req, { PROFILES_KV: null });
-        } else if (typeof defaultExport === 'string') {
-          html = defaultExport;
-        } else {
-          // If it's an HTMLBundle, convert to string via toString
-          html = String(defaultExport);
+        // Rate limiting check
+        const rateLimitResult = checkDashboardRateLimit(req, server);
+        if (rateLimitResult && !rateLimitResult.allowed) {
+          return new Response(
+            `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Exceeded - WNCAAB Dev Server</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; margin-bottom: 20px; }
+    .retry-after { color: #667eea; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Rate Limit Exceeded</h1>
+    <p>Too many requests. Please try again later.</p>
+    <p class="retry-after">Retry after: ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds</p>
+  </div>
+</body>
+</html>`,
+            {
+              status: 429,
+              headers: {
+                ...dashboardHeaders(IS_DEVELOPMENT === false),
+                'Retry-After': String(Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)),
+                'X-RateLimit-Limit': '60',
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': String(rateLimitResult.resetAt),
+              },
+            }
+          );
         }
+        
+        // Generate registry dashboard HTML inline
+        const html = generateRegistryDashboard();
+        
+        // Apply security headers
+        const headers = dashboardHeaders(IS_DEVELOPMENT === false);
+        if (rateLimitResult) {
+          headers['X-RateLimit-Limit'] = '60';
+          headers['X-RateLimit-Remaining'] = String(rateLimitResult.remaining);
+          headers['X-RateLimit-Reset'] = String(rateLimitResult.resetAt);
+        }
+        
         return new Response(html, {
-          headers: { 'Content-Type': 'text/html' },
+          headers,
         });
       } catch (error) {
         console.error('[Registry] Failed to load dashboard:', error);
-        return new Response(`Failed to load registry dashboard: ${error instanceof Error ? error.message : String(error)}`, {
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error - Registry Dashboard</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Registry Dashboard Error</h1>
+    <p>An error occurred while loading the registry dashboard.</p>
+    <p style="font-size: 0.9em; color: #999; margin-top: 20px;">
+      ${IS_DEVELOPMENT ? escapeHtml(error instanceof Error ? error.message : String(error)) : 'Please try again later or contact support.'}
+    </p>
+  </div>
+</body>
+</html>`;
+        return new Response(errorHtml, {
           status: 500,
-          headers: { 'Content-Type': 'text/plain' },
+          headers: dashboardHeaders(IS_DEVELOPMENT === false),
         });
       }
     },
     
-    // Dashboard route - dynamic HTML generation
-    '/': async () => {
-      return new Response(generateDashboard(), {
-        headers: { 'Content-Type': 'text/html' },
-      });
+    // Tier Distribution Dashboard Route - HTML page with security hardening
+    '/tiers': async (req, server) => {
+      try {
+        // Rate limiting check
+        const rateLimitResult = checkDashboardRateLimit(req, server);
+        if (rateLimitResult && !rateLimitResult.allowed) {
+          return new Response(
+            `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Exceeded - Tier Distribution</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; margin-bottom: 20px; }
+    .retry-after { color: #667eea; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Rate Limit Exceeded</h1>
+    <p>Too many requests. Please try again later.</p>
+    <p class="retry-after">Retry after: ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds</p>
+  </div>
+</body>
+</html>`,
+            {
+              status: 429,
+              headers: {
+                ...dashboardHeaders(IS_DEVELOPMENT === false),
+                'Retry-After': String(Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)),
+                'X-RateLimit-Limit': '60',
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': String(rateLimitResult.resetAt),
+              },
+            }
+          );
+        }
+        
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎯 Tier Distribution - WNCAAB Dev Server</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+    .header p {
+      font-size: 1.2em;
+      opacity: 0.9;
+    }
+    .content {
+      padding: 40px;
+    }
+    .actions {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      transition: transform 0.2s, box-shadow 0.2s;
+      border: none;
+      cursor: pointer;
+      font-size: 1em;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+    }
+    .btn-secondary {
+      background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    }
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: #666;
+      font-size: 1.2em;
+    }
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .tier-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-top: 30px;
+    }
+    .tier-card {
+      background: #f8f9fa;
+      border-radius: 12px;
+      padding: 24px;
+      border-left: 5px solid #667eea;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .tier-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+    }
+    .tier-card h3 {
+      color: #667eea;
+      margin-bottom: 15px;
+      font-size: 1.3em;
+    }
+    .tier-card .count {
+      font-size: 2em;
+      font-weight: 700;
+      color: #333;
+      margin-bottom: 10px;
+    }
+    .tier-card .bookmakers {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #dee2e6;
+    }
+    .tier-card .bookmakers-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .tier-card .bookmaker-tag {
+      background: white;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #495057;
+      border: 1px solid #dee2e6;
+    }
+    .tier-card .bookmaker-tag.more {
+      color: #667eea;
+      font-weight: 600;
+    }
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 30px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-radius: 12px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+    .stat-item {
+      text-align: center;
+    }
+    .stat-item .label {
+      color: #666;
+      font-size: 0.9em;
+      margin-bottom: 5px;
+    }
+    .stat-item .value {
+      font-size: 2em;
+      font-weight: 700;
+      color: #667eea;
+    }
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #dc3545;
+    }
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎯 Tier Distribution</h1>
+      <p>Bookmakers by tier</p>
+    </div>
+    <div class="content">
+      <div class="actions">
+        <button class="btn" onclick="loadTiers()">📊 View Tiers →</button>
+        <a href="/api/registry/tiers" target="_blank" class="btn btn-secondary">🔗 API JSON →</a>
+        <a href="/registry" class="btn btn-secondary">🎛️ Registry Dashboard →</a>
+      </div>
+      
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+      </div>
+      
+      <div id="content" class="hidden">
+        <div id="stats" class="stats"></div>
+        <div id="tier-grid" class="tier-grid"></div>
+      </div>
+      
+      <div id="error" class="error hidden"></div>
+    </div>
+  </div>
+  
+  <script>
+    async function loadTiers() {
+      const loadingEl = document.getElementById('loading');
+      const contentEl = document.getElementById('content');
+      const errorEl = document.getElementById('error');
+      const statsEl = document.getElementById('stats');
+      const gridEl = document.getElementById('tier-grid');
+      
+      loadingEl.classList.remove('hidden');
+      contentEl.classList.add('hidden');
+      errorEl.classList.add('hidden');
+      
+      try {
+        const response = await fetch('/api/registry/tiers');
+        if (!response.ok) {
+          throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+        }
+        const data = await response.json();
+        
+        // Calculate total bookmakers
+        const totalBookmakers = Object.values(data.tiers || {}).reduce((sum: number, tier: any) => sum + (tier.count || 0), 0);
+        
+        // Render stats
+        statsEl.innerHTML = \`
+          <div class="stat-item">
+            <div class="label">Total Bookmakers</div>
+            <div class="value">\${totalBookmakers}</div>
+          </div>
+          <div class="stat-item">
+            <div class="label">Total Tiers</div>
+            <div class="value">\${Object.keys(data.tiers || {}).length}</div>
+          </div>
+        \`;
+        
+        // Render tier cards
+        const tiers = data.tiers || {};
+        const tierOrder = ['TIER_0_CRYPTO_SHARP', 'TIER_X_MONSTER', 'TIER_1_SHARP', 'TIER_2_EUROPEAN', 'TIER_3_US_RECREATIONAL', 'TIER_4_MANUAL'];
+        
+        const tierCards = tierOrder
+          .filter(tier => tiers[tier])
+          .map(tier => {
+            const tierData = tiers[tier];
+            const bookmakers = tierData.bookmakers || [];
+            const displayCount = 10;
+            const displayBookmakers = bookmakers.slice(0, displayCount);
+            const remaining = bookmakers.length - displayCount;
+            
+            let bookmakerTags = '';
+            if (displayBookmakers.length > 0) {
+              bookmakerTags = displayBookmakers.map(b => '<span class="bookmaker-tag">' + b + '</span>').join('');
+              if (remaining > 0) {
+                bookmakerTags += '<span class="bookmaker-tag more">+' + remaining + ' more</span>';
+              }
+            } else {
+              bookmakerTags = '<span class="bookmaker-tag" style="opacity: 0.6;">No bookmakers</span>';
+            }
+            
+            return \`
+              <div class="tier-card">
+                <h3>\${tier.replace(/_/g, ' ')}</h3>
+                <div class="count">\${tierData.count}</div>
+                <div class="bookmakers">
+                  <strong>Bookmakers:</strong>
+                  <div class="bookmakers-list">
+                    \${bookmakerTags}
+                  </div>
+                </div>
+              </div>
+            \`;
+          })
+          .join('');
+        
+        gridEl.innerHTML = tierCards || '<div class="tier-card"><p style="text-align: center; color: #666;">No tier data available</p></div>';
+        
+        loadingEl.classList.add('hidden');
+        contentEl.classList.remove('hidden');
+      } catch (error) {
+        loadingEl.classList.add('hidden');
+        errorEl.textContent = \`Failed to load tiers: \${error instanceof Error ? error.message : String(error)}\`;
+        errorEl.classList.remove('hidden');
+      }
+    }
+    
+    // Auto-load on page load
+    loadTiers();
+  </script>
+</body>
+</html>`;
+        
+        // Apply security headers
+        const headers = dashboardHeaders(IS_DEVELOPMENT === false);
+        if (rateLimitResult) {
+          headers['X-RateLimit-Limit'] = '60';
+          headers['X-RateLimit-Remaining'] = String(rateLimitResult.remaining);
+          headers['X-RateLimit-Reset'] = String(rateLimitResult.resetAt);
+        }
+        
+        return new Response(html, {
+          headers,
+        });
+      } catch (error) {
+        console.error('[Tiers] Failed to load dashboard:', error);
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error - Tier Distribution</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Tier Distribution Error</h1>
+    <p>An error occurred while loading the tier distribution page.</p>
+    <p style="font-size: 0.9em; color: #999; margin-top: 20px;">
+      ${IS_DEVELOPMENT ? escapeHtml(error instanceof Error ? error.message : String(error)) : 'Please try again later or contact support.'}
+    </p>
+  </div>
+</body>
+</html>`;
+        return new Response(errorHtml, {
+          status: 500,
+          headers: dashboardHeaders(IS_DEVELOPMENT === false),
+        });
+      }
+    },
+    
+    // Dashboard route - dynamic HTML generation with security hardening
+    '/': async (req, server) => {
+      const startTime = performance.now();
+      
+      try {
+        // Rate limiting check
+        const rateLimitResult = checkDashboardRateLimit(req, server);
+        if (rateLimitResult && !rateLimitResult.allowed) {
+          return new Response(
+            `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Exceeded - WNCAAB Dev Server</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; margin-bottom: 20px; }
+    .retry-after { color: #667eea; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Rate Limit Exceeded</h1>
+    <p>Too many requests. Please try again later.</p>
+    <p class="retry-after">Retry after: ${Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)} seconds</p>
+  </div>
+</body>
+</html>`,
+            {
+              status: 429,
+              headers: {
+                ...dashboardHeaders(IS_DEVELOPMENT === false),
+                'Retry-After': String(Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000)),
+                'X-RateLimit-Limit': '60',
+                'X-RateLimit-Remaining': '0',
+                'X-RateLimit-Reset': String(rateLimitResult.resetAt),
+              },
+            }
+          );
+        }
+        
+        // Generate dashboard HTML
+        const dashboardHtml = generateDashboard();
+        
+        // Generate ETag for caching
+        const etag = generateETag(dashboardHtml);
+        
+        // Check if client has cached version
+        const cachedResponse = checkETag(req, etag);
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        
+        // Return dashboard with security headers
+        const headers = dashboardHeaders(IS_DEVELOPMENT === false);
+        headers['ETag'] = etag;
+        headers['Cache-Control'] = IS_DEVELOPMENT ? 'no-cache, must-revalidate' : 'public, max-age=60';
+        
+        // Add rate limit headers if available
+        if (rateLimitResult) {
+          headers['X-RateLimit-Limit'] = '60';
+          headers['X-RateLimit-Remaining'] = String(rateLimitResult.remaining);
+          headers['X-RateLimit-Reset'] = String(rateLimitResult.resetAt);
+        }
+        
+        return new Response(dashboardHtml, {
+          headers,
+        });
+      } catch (error) {
+        // Error handling with secure error page
+        const errorHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Error - WNCAAB Dev Server</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+      max-width: 500px;
+    }
+    h1 { color: #dc3545; margin-bottom: 20px; }
+    p { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚠️ Dashboard Error</h1>
+    <p>An error occurred while generating the dashboard.</p>
+    <p style="font-size: 0.9em; color: #999; margin-top: 20px;">
+      ${IS_DEVELOPMENT ? escapeHtml(error instanceof Error ? error.message : String(error)) : 'Please try again later or contact support.'}
+    </p>
+  </div>
+</body>
+</html>`;
+        
+        return new Response(errorHtml, {
+          status: 500,
+          headers: dashboardHeaders(IS_DEVELOPMENT === false),
+        });
+      }
     },
     
     // ============================================================================
