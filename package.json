@@ -121,7 +121,8 @@
     "bun:pr-asan": "bun run scripts/bun-pr-test.ts --asan",
     "bun:pr-version": "bun run scripts/bun-pr-test.ts --version",
     "atomic:pr": "bun run scripts/atomic-pr.js",
-    "dev": "PORT=3002 bun --hot scripts/dev-server.ts",
+    "dev": "bash scripts/start-dev-tmux.sh",
+    "dev:direct": "PORT=3002 bun --hot scripts/dev-server.ts",
     "dev:server": "bun run scripts/dev-server.ts",
     "prod": "bun scripts/dev-server.ts",
     "build:tension-states": "bun run build/tension-page-macro.ts",
@@ -132,6 +133,27 @@
     "dev:colors": "bun run build:css-variables && open public/color-palette.html",
     "validate:colors": "bun -e \"import './macros/color-macro.ts'; import { generateColorReport } from './macros/color-macro.ts'; generateColorReport(); console.log('✅ Color system validation complete')\"",
     "monitor:colors": "bun run validate:colors",
+    "monitor:nowgoal": "bun run src/cli/interactive-monitor.ts",
+    "monitor:ws": "bun run src/cli/interactive-monitor.ts",
+    "monitor:pregame": "bash scripts/pregame-check.sh",
+    "monitor:perf": "bash scripts/performance-benchmark.sh",
+    "test:telegram": "bun run scripts/test-steam-alert.ts",
+    "test:telegram:pin": "bun run scripts/test-telegram-pin.ts",
+    "verify:telegram": "bun run scripts/verify-telegram.ts",
+    "setup:telegram": "bash scripts/setup-telegram.sh",
+    "setup:production": "bash scripts/setup-production.sh",
+    "start:sentinel": "bash scripts/start-sentinel.sh",
+    "start": "bun run src/index-unified.ts",
+    "start:port": "PORT=3002 bun run src/index-unified.ts",
+    "start:unified": "bun run src/index-unified.ts",
+    "start:discovery": "DISCOVERY_MODE=true bun run src/index-unified.ts",
+    "stop": "kill $(lsof -ti:3001) 2>/dev/null || true",
+    "restart": "bun run stop && bun run start",
+    "restart:sentinel": "bash scripts/restart-sentinel.sh",
+    "verify:restart": "bash scripts/verify-restart.sh",
+    "force-restart": "kill -9 $(lsof -ti:3001) 2>/dev/null; bun run start",
+    "check:port": "bun run scripts/check-port.ts",
+    "verify:production": "bun run scripts/verify-production.ts",
     "audit:colors": "bun run scripts/color-audit.ts",
     "health:colors": "bun run validate:colors && bun run build:css-variables",
     "weekly-audit": "bun run audit:colors && bun run build:css-variables",
@@ -178,6 +200,7 @@
     "generate-release-notes": "bun run scripts/generate-release-notes.ts"
   },
   "devDependencies": {
+    "@iarna/toml": "2.2.5",
     "js-yaml": "^4.1.0"
   },
   "engines": {
@@ -187,5 +210,8 @@
     "atomic-pr": "./scripts/atomic-pr.js"
   },
   "bunReleaseNotes": "BUN-RELEASE-NOTES-ENHANCED.md",
-  "changelog": "CHANGELOG.md"
+  "changelog": "CHANGELOG.md",
+  "dependencies": {
+    "fast-xml-parser": "5.3.1"
+  }
 }
