@@ -545,6 +545,7 @@ import {
   SPLINE_API_VERSION,
   AI_MAPARSE_VERSION,
   TENSION_API_VERSION,
+  TENSION_VISUALIZER_VERSION,
   DEV_SERVER_VERSION,
 } from '../src/config/component-versions.ts';
 import { getVersionRegistryLoader, type LoadedVersionEntity } from '../src/config/version-registry-loader.ts';
@@ -587,9 +588,11 @@ import {
   getMetrics,
   updateMetrics,
   incrementMetric,
+  logTESEvent,
 } from '../lib/production-utils.ts';
+import { getCpuLoad } from '../src/lib/status-aggregator.ts';
 
-import { checkDashboardRateLimit, checkApiRateLimit } from '../lib/rate-limiter.ts';
+import { checkDashboardRateLimit, checkApiRateLimit, checkWorkerSnapshotRateLimit } from '../lib/rate-limiter.ts';
 import { ENDPOINT_METADATA, type JsonSchema } from '../src/lib/endpoint-metadata.ts';
 
 // Import shared utilities from lib modules
@@ -1281,6 +1284,9 @@ async function getAllEndpoints(): Promise<EndpointsMap> {
       { method: 'GET', path: '/api/ai/maparse', description: 'AI auto-maparse curve detection', query: { prices: 'string (CSV)' } },
       { method: 'GET', path: '/api/ai/models/status', description: 'AI model cache status and statistics' },
       { method: 'GET', path: '/api/validate/threshold', description: 'Threshold validator with auto-correction', query: { threshold: 'string' } },
+      { method: 'GET', path: '/api/dev/tmux/status', description: 'Get tmux session status' },
+      { method: 'POST', path: '/api/dev/tmux/start', description: 'Start tmux session' },
+      { method: 'POST', path: '/api/dev/tmux/stop', description: 'Stop tmux session' },
       { method: 'GET', path: '/', description: 'HTML dashboard' },
     ]
   };
@@ -1354,6 +1360,285 @@ async function getAllEndpoints(): Promise<EndpointsMap> {
   };
 }
 
+/**
+ * Aggregates status from all TES subsystems
+ */
+interface EnhancedStatusData {
+  timestamp: string;
+  vector: {
+    sessions: {
+      tmux: number;
+      activeWorkers: number;
+      apiSessions: number;
+      websocketConnections: number;
+      websocketSubscribers: number;
+    };
+    directions: {
+      primaryRegion: string;
+      trafficMode: 'normal' | 'degraded' | 'isolated';
+      requestFlow: {
+        totalRoutes: number;
+        activeRoutes: number;
+        avgLatency: number;
+        requestsPerSecond: number;
+      };
+      activeRoutes: number;
+    };
+    others: {
+      memory: number;
+      cpu: number;
+      errorRate: number;
+      uptime: number;
+    };
+  };
+  meta: {
+    totalEndpoints: number;
+    telemetryStatus: 'healthy' | 'degraded' | 'offline';
+    statusVersion: string;
+  };
+}
+
+async function getEnhancedStatus(): Promise<EnhancedStatusData> {
+  return {
+    timestamp: new Date().toISOString(),
+    vector: {
+      sessions: await getSessionMetrics(),
+      directions: await getDirectionMetrics(),
+      others: await getOperationalMetrics()
+    },
+    meta: {
+      totalEndpoints: await getEndpointCount(await getAllEndpoints()),
+      telemetryStatus: await getTelemetryHealth(),
+      statusVersion: '2.0'
+    }
+  };
+}
+
+async function getSessionMetrics(): Promise<{
+  tmux: number;
+  activeWorkers: number;
+  apiSessions: number;
+  websocketConnections: number;
+  websocketSubscribers: number;
+}> {
+  const [tmuxStatus, workerStatus, apiSessions, wsConnections] = await Promise.allSettled([
+    fetch('http://localhost:3002/api/dev/tmux/status').then(r => r.json()),
+    fetch(`http://localhost:${WORKER_API_PORT}/workers/status`).then(r => r.json()).catch(() => ({ connected: 0 })),
+    getActiveApiSessions(),
+    getWebSocketConnectionCount()
+  ]);
+  
+  // ✅ Use native Bun metrics for subscribers
+  const websocketSubscribers = getTotalSubscriberCount(devServer);
+  
+  return {
+    tmux: tmuxStatus.status === 'fulfilled' ? (tmuxStatus.value.panes?.length || tmuxStatus.value.sessionCount || 0) : 0,
+    activeWorkers: workerStatus.status === 'fulfilled' ? (workerStatus.value.connected || 0) : 0,
+    apiSessions: apiSessions.status === 'fulfilled' ? apiSessions.value : 0,
+    websocketConnections: wsConnections.status === 'fulfilled' ? wsConnections.value : 0,
+    websocketSubscribers
+  };
+}
+
+async function getDirectionMetrics(): Promise<{
+  primaryRegion: string;
+  trafficMode: 'normal' | 'degraded' | 'isolated';
+  requestFlow: {
+    totalRoutes: number;
+    activeRoutes: number;
+    avgLatency: number;
+    requestsPerSecond: number;
+  };
+  activeRoutes: number;
+}> {
+  const endpoints = await getAllEndpoints();
+  const routingTable = await getActiveRoutingTable();
+  const totalRoutes = Object.values(endpoints).reduce((sum, api) => sum + api.endpoints.length, 0);
+  
+  return {
+    primaryRegion: process.env.TES_PRIMARY_REGION || process.env.PRIMARY_REGION || 'us-east-1',
+    trafficMode: getTrafficMode(),
+    requestFlow: {
+      totalRoutes,
+      activeRoutes: routingTable.activeRoutes || 0,
+      avgLatency: getAverageLatency(),
+      requestsPerSecond: getRPS()
+    },
+    activeRoutes: routingTable.activeRoutes || 0
+  };
+}
+
+async function getOperationalMetrics(): Promise<{
+  memory: number;
+  cpu: number;
+  errorRate: number;
+  uptime: number;
+}> {
+  const memUsage = process.memoryUsage();
+  
+  return {
+    memory: memUsage.heapUsed,
+    cpu: await getCpuLoad(),
+    errorRate: getRecentErrorRate(),
+    uptime: process.uptime()
+  };
+}
+
+async function getActiveApiSessions(): Promise<number> {
+  return devServer.pendingRequests;
+}
+
+function getWebSocketConnectionCount(): number {
+  return devServer.pendingWebSockets;
+}
+
+// Helper: Get total WebSocket subscriber count across all topics
+function getTotalSubscriberCount(server: typeof devServer): number {
+  const topics = ['chat', 'status-live', 'workers', 'version-updates', 'spline-live'];
+  try {
+    return topics.reduce((sum, topic) => {
+      try {
+        return sum + (server.subscriberCount?.(topic) || 0);
+      } catch {
+        return sum;
+      }
+    }, 0);
+  } catch {
+    return server.pendingWebSockets; // Fallback to pending connections
+  }
+}
+
+// Helper: Get live subscriber metrics by topic
+function getLiveSubscriberMetrics(server: typeof devServer): {
+  statusPanel: number;
+  workerUpdates: number;
+  chat: number;
+  spline: number;
+  total: number;
+} {
+  try {
+    return {
+      statusPanel: server.subscriberCount?.('status-live') || 0,
+      workerUpdates: server.subscriberCount?.('workers') || 0,
+      chat: server.subscriberCount?.('chat') || 0,
+      spline: server.subscriberCount?.('spline-live') || 0,
+      total: getTotalSubscriberCount(server)
+    };
+  } catch {
+    return {
+      statusPanel: 0,
+      workerUpdates: 0,
+      chat: 0,
+      spline: 0,
+      total: server.pendingWebSockets
+    };
+  }
+}
+
+async function getTelemetryHealth(): Promise<'healthy' | 'degraded' | 'offline'> {
+  try {
+    const response = await fetch(`http://localhost:${WORKER_API_PORT}/workers/status`, {
+      signal: AbortSignal.timeout(WORKER_API_TIMEOUT)
+    });
+    if (!response.ok) return 'degraded';
+    const data = await response.json();
+    const workerCount = data.connected || 0;
+    return workerCount > 0 ? 'healthy' : 'degraded';
+  } catch {
+    return 'offline';
+  }
+}
+
+function getAverageLatency(): number {
+  // TODO: Implement actual latency tracking
+  return 0;
+}
+
+function getRPS(): number {
+  // TODO: Implement actual RPS tracking
+  return 0;
+}
+
+// Enhanced Status Helpers
+// ============================================================================
+
+// Helper: Get tmux session status
+async function getTmuxSessionStatus(): Promise<{ sessionCount: number; online: boolean }> {
+  try {
+    const { spawn } = await import('child_process');
+    const proc = spawn('bun', ['run', 'scripts/tmux-tes-dev.ts', 'status', '--json'], {
+      cwd: process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    
+    let stdout = '';
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    
+    await new Promise<void>((resolve, reject) => {
+      proc.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Process exited with code ${code}`));
+      });
+    });
+    
+    const status = JSON.parse(stdout);
+    return {
+      sessionCount: status.online ? (status.panes?.length || 0) : 0,
+      online: status.online || false
+    };
+  } catch {
+    return { sessionCount: 0, online: false };
+  }
+}
+
+// Helper: Worker connection status
+async function getWorkerConnectionStatus(): Promise<{ connected: number; total: number; error?: string }> {
+  try {
+    const response = await fetch(`http://localhost:${WORKER_API_PORT}/api/workers/registry`, {
+      signal: AbortSignal.timeout(WORKER_API_TIMEOUT)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const workers = typeof data === 'object' && data !== null ? Object.keys(data) : [];
+    return { connected: workers.length, total: workers.length };
+  } catch {
+    return { connected: 0, total: 0, error: 'telemetry offline' };
+  }
+}
+
+// Helper: Active routing table
+async function getActiveRoutingTable(): Promise<{ activeRoutes: number }> {
+  const endpoints = await getAllEndpoints();
+  const totalRoutes = Object.values(endpoints).reduce((sum, api) => sum + api.endpoints.length, 0);
+  return { activeRoutes: totalRoutes };
+}
+
+// Helper: Traffic mode
+function getTrafficMode(): 'normal' | 'degraded' | 'isolated' {
+  // Simple implementation - can be enhanced with actual error rate tracking
+  const errorRate = getRecentErrorRate();
+  if (errorRate > 0.5) return 'isolated';
+  if (errorRate > 0.1) return 'degraded';
+  return 'normal';
+}
+
+// Helper: Recent error rate (simplified)
+function getRecentErrorRate(): number {
+  // TODO: Implement actual error rate tracking
+  return 0;
+}
+
+// CPU load function is now imported from status-aggregator.ts
+
+// Helper: Endpoint count
+async function getEndpointCount(endpoints: EndpointsMap): Promise<number> {
+  return Object.values(endpoints).reduce((sum, api) => sum + api.endpoints.length, 0);
+}
+
+// ============================================================================
+
+// ============================================================================
+
 // packageInfo is now loaded via direct import above (zero runtime cost)
 
 // Generate HTML dashboard
@@ -1422,9 +1707,21 @@ async function generateDashboard() {
     return `<li><code>${escapeHtml(endpoint.method)}</code> <a href="${escapeHtml(fullUrl)}" target="_blank">${escapeHtml(endpoint.path)}</a> - ${escapeHtml(endpoint.description)}</li>`;
   };
   
+  // Separate endpoints by category for better organization
   const workerEndpoints = endpoints.worker.endpoints.map(e => createEndpointLink(e, endpoints.worker.base)).join('\n');
   const splineEndpoints = endpoints.spline.endpoints.map(e => createEndpointLink(e, endpoints.spline.base)).join('\n');
-  const devEndpoints = endpoints.dev.endpoints.map(e => createEndpointLink(e, endpoints.dev.base)).join('\n');
+  
+  // Filter tmux endpoints into their own section
+  const tmuxEndpoints = endpoints.dev.endpoints
+    .filter(e => e.path.startsWith('/api/dev/tmux'))
+    .map(e => createEndpointLink(e, endpoints.dev.base))
+    .join('\n');
+  
+  // Dev endpoints excluding tmux (tmux gets its own section)
+  const devEndpoints = endpoints.dev.endpoints
+    .filter(e => !e.path.startsWith('/api/dev/tmux'))
+    .map(e => createEndpointLink(e, endpoints.dev.base))
+    .join('\n');
   
   const version = safeVersion;
   
@@ -1446,6 +1743,7 @@ async function generateDashboard() {
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="WNCAAB Dev Server Dashboard">
   <meta name="twitter:description" content="${safeDescription}">
+  <meta name="tes-dev-token" content="${process.env.TES_DEV_TOKEN || 'dev-token-default'}">
   <title>WNCAAB Dev Server Dashboard v${version}</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚀</text></svg>">
   <style>
@@ -2709,7 +3007,30 @@ async function generateDashboard() {
           color: #667eea;
           text-transform: uppercase;
           letter-spacing: 0.5px;
-        ">${endpoints.dev.endpoints.length + endpoints.worker.endpoints.length + endpoints.spline.endpoints.length} Total</span>
+        ">${Object.values(endpoints).reduce((sum: number, api: ApiService) => sum + api.endpoints.length, 0)} Total</span>
+        <div style="
+          margin-top: 0.5rem;
+          font-size: 0.7rem;
+          color: #999;
+          display: flex;
+          gap: 0.75rem;
+          align-items: center;
+          flex-wrap: wrap;
+        ">
+          <span>Dev: <strong style="color: #667eea;">${endpoints.dev.endpoints.filter(e => !e.path.startsWith('/api/tension') && !e.path.startsWith('/api/shadow-ws') && !e.path.startsWith('/api/ai/') && !e.path.startsWith('/api/validate/threshold') && !e.path.startsWith('/api/gauge/womens-sports') && !e.path.startsWith('/api/dev/tmux')).length}</strong></span>
+          <span>•</span>
+          <span>Worker: <strong style="color: #dc3545;">${endpoints.worker.endpoints.length}</strong></span>
+          <span>•</span>
+          <span>Spline: <strong style="color: #28a745;">${endpoints.spline.endpoints.length}</strong></span>
+          <span>•</span>
+          <span>Tension: <strong style="color: #ff6b6b;">${endpoints.dev.endpoints.filter(e => e.path.startsWith('/api/tension') || e.path === '/tension').length}</strong></span>
+          <span>•</span>
+          <span>🚀 Enhanced CLI: <strong style="color: #ff9800;">${endpoints.dev.endpoints.filter(e => e.path.startsWith('/api/ai/') || e.path.startsWith('/api/validate/threshold') || e.path.startsWith('/api/gauge/womens-sports')).length}</strong></span>
+          <span>•</span>
+          <span>🌑 Shadow WS: <strong style="color: #9c27b0;">${endpoints.dev.endpoints.filter(e => e.path.startsWith('/api/shadow-ws')).length}</strong></span>
+          <span>•</span>
+          <span>🖥️ Tmux: <strong style="color: #00bcd4;">${endpoints.dev.endpoints.filter(e => e.path.startsWith('/api/dev/tmux')).length}</strong></span>
+        </div>
       </div>
       
       <!-- Worker API Section -->
@@ -2843,6 +3164,61 @@ async function generateDashboard() {
         </ul>
       </div>
       
+      <!-- Tmux Orchestration Section -->
+      <div style="
+        background: linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%);
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin-bottom: 1.25rem;
+        border: 2px solid #00bcd4;
+        box-shadow: 0 2px 8px rgba(0, 188, 212, 0.1);
+      " onmouseover="this.style.borderColor='#00bcd4'; this.style.boxShadow='0 4px 12px rgba(0, 188, 212, 0.2)'" onmouseout="this.style.borderColor='#00bcd4'; this.style.boxShadow='0 2px 8px rgba(0, 188, 212, 0.1)'">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <h3 style="
+            color: #00838f;
+            margin: 0;
+            font-size: 1.4em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+          ">
+            <span>🖥️</span>
+            <span>Tmux Orchestration <span class="version-badge" style="
+              display: inline-block;
+              padding: 0.2rem 0.5rem;
+              background: rgba(0, 0, 0, 0.05);
+              border-radius: 4px;
+              font-size: 0.75em;
+              font-weight: 600;
+              color: #666;
+              font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+              margin-left: 0.25rem;
+            ">(v1.01)</span></span>
+          </h3>
+          <span class="status active" style="
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 700;
+            background: #00bcd4;
+            color: white;
+          ">Session: tes-dev</span>
+        </div>
+        <p style="
+          color: #006064;
+          margin-bottom: 1rem;
+          font-size: 0.9em;
+          line-height: 1.5;
+        ">
+          Unified development environment orchestrator. Manage tmux sessions, panes, and services from the dashboard.
+        </p>
+        <ul style="list-style: none; padding: 0; margin: 0;">
+          ${tmuxEndpoints}
+        </ul>
+      </div>
+      
       <!-- Tension Mapping Section -->
       <div style="
         background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
@@ -2924,7 +3300,7 @@ async function generateDashboard() {
             gap: 0.5rem;
           ">
             <span>🚀</span>
-            <span>Enhanced CLI Features</span>
+            <span>Enhanced CLI Features${versionDisplay(safeComponentVersions['AI Maparse'])}</span>
           </h3>
           <span class="status active" style="
             display: inline-block;
@@ -2934,7 +3310,7 @@ async function generateDashboard() {
             font-weight: 700;
             background: #fd7e14;
             color: white;
-          ">v1.4.2</span>
+          ">Active</span>
         </div>
         <ul style="list-style: none; padding: 0; margin: 0;">
           <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(253, 126, 20, 0.2);">
@@ -2946,6 +3322,11 @@ async function generateDashboard() {
             <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
             <a href="/api/ai/maparse?prices=100,102,105,110,118" target="_blank" style="margin-left: 0.75rem; color: #fd7e14; text-decoration: none; font-weight: 500;">/api/ai/maparse</a>
             <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- AI auto-maparse curve detection</span>
+          </li>
+          <li style="padding: 0.75rem 0; border-bottom: 1px solid rgba(253, 126, 20, 0.2);">
+            <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
+            <a href="/api/ai/models/status" target="_blank" style="margin-left: 0.75rem; color: #fd7e14; text-decoration: none; font-weight: 500;">/api/ai/models/status</a>
+            <span style="margin-left: 0.5rem; color: #666; font-size: 0.9em;">- AI model cache status and statistics</span>
           </li>
           <li style="padding: 0.75rem 0;">
             <code style="background: rgba(253, 126, 20, 0.15); color: #fd7e14; padding: 0.25rem 0.5rem; border-radius: 4px; font-weight: 600;">GET</code>
@@ -4823,6 +5204,36 @@ async function generateDashboard() {
       </div>
     </div>
     
+    <section id="operational-status" style="
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-left: 6px solid #00bcd4;
+      margin-bottom: 40px;
+      padding: 2rem;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 188, 212, 0.15);
+    ">
+      <h2 style="
+        color: #00bcd4;
+        font-size: 2em;
+        margin: 0 0 1.5rem 0;
+        font-weight: 900;
+        letter-spacing: -0.5px;
+        text-shadow: 0 2px 8px rgba(0, 188, 212, 0.15);
+      ">⚙️ Operational Status</h2>
+      
+      <!-- ✅ Enhanced system status with categories -->
+      <system-status data-polling-interval="5000"></system-status>
+      
+      <!-- ✅ Live metrics stream (WebSocket) -->
+      <metrics-stream></metrics-stream>
+      
+      <!-- ✅ Tmux control panel -->
+      <tmux-control-panel></tmux-control-panel>
+      
+      <!-- ✅ Worker snapshot panel -->
+      <worker-snapshot-panel></worker-snapshot-panel>
+    </section>
+    
     <div class="section">
       <h2>📊 System Status</h2>
       <div class="status-grid">
@@ -4914,6 +5325,30 @@ async function generateDashboard() {
     function handleError(error, defaultMessage = 'An error occurred') {
       const message = error instanceof Error ? error.message : String(error);
       return message || defaultMessage;
+    }
+    
+    // Tmux session management helper
+    async function startTmuxSession() {
+      try {
+        const response = await fetch('/api/dev/tmux/start', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+          const notification = document.createElement('div');
+          notification.style.cssText = 'position:fixed;top:20px;right:20px;padding:15px 20px;background:#28a745;color:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10000;font-weight:600;';
+          notification.textContent = '✅ Tmux session started! Attach with: tmux attach-session -t tes-dev';
+          document.body.appendChild(notification);
+          setTimeout(() => notification.remove(), 5000);
+        } else {
+          throw new Error(data.error || 'Failed to start tmux session');
+        }
+      } catch (error) {
+        const notification = document.createElement('div');
+        notification.style.cssText = 'position:fixed;top:20px;right:20px;padding:15px 20px;background:#dc3545;color:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10000;font-weight:600;';
+        notification.textContent = '❌ Failed to start tmux session: ' + handleError(error);
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 5000);
+      }
     }
     
     // TES-OPS-004.B.8: Client-side HTML escaping utility
@@ -6531,9 +6966,15 @@ async function loadTiers() {
   }
 }
 
-async function loadWorkers() {
+    async function loadWorkers() {
       try {
-        const response = await fetch('/api/dev/workers');
+        // TES-SEC: Include auth token for /api/dev/workers requests
+        const devToken = document.querySelector('meta[name="tes-dev-token"]')?.getAttribute('content') || 'dev-token-default';
+        const response = await fetch('/api/dev/workers', {
+          headers: {
+            'X-TES-Dev-Token': devToken,
+          },
+        });
         if (!response.ok) {
           throw new Error(\`Worker API returned \${response.status}: \${response.statusText}\`);
         }
@@ -6545,6 +6986,59 @@ async function loadWorkers() {
         const summary = data.summary || {};
         const hasError = data.error || response.status === 503;
         const errorMessage = hasError ? '<div style="margin-bottom:20px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;"><strong style="color:#fd7e14;display:block;margin-bottom:5px;">⚠️ Worker API Not Available</strong><span style="color:#666;font-size:0.9em;">The worker telemetry API is not running. Start it with <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#fd7e14;">bun run scripts/worker-telemetry-api.ts</code> or check if it\'s running on port \${WORKER_API_PORT_VALUE}.</span></div>' : '';
+        
+        // Helper function to format duration
+        function formatDuration(ms) {
+          if (!ms || ms < 0) return '0s';
+          const seconds = Math.floor(ms / 1000);
+          const minutes = Math.floor(seconds / 60);
+          const hours = Math.floor(minutes / 60);
+          const days = Math.floor(hours / 24);
+          if (days > 0) return \`\${days}d \${hours % 24}h\`;
+          if (hours > 0) return \`\${hours}h \${minutes % 60}m\`;
+          if (minutes > 0) return \`\${minutes}m \${seconds % 60}s\`;
+          return \`\${seconds}s\`;
+        }
+        
+        // Helper function to format timestamp
+        function formatTimestamp(timestamp) {
+          if (!timestamp) return 'N/A';
+          const date = new Date(timestamp);
+          return date.toLocaleString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit', 
+            second: '2-digit',
+            hour12: true 
+          });
+        }
+        
+        // Build worker timing details
+        const workers = data.workers || {};
+        const now = Date.now();
+        const workerTimingDetails = Object.keys(workers).length > 0 ? 
+          '<div style="margin-top:20px;padding:20px;background:#f8f9fa;border-radius:8px;border:1px solid #dee2e6;"><strong style="display:block;margin-bottom:15px;color:#333;font-size:1.1em;">⏱️ Worker Timing Information</strong><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:15px;">' + 
+          Object.entries(workers).map(([id, worker]) => {
+            const createdAt = worker.created_at || worker.createdAt || null;
+            const terminatedAt = worker.terminated_at || worker.terminatedAt || (worker.status === 'terminated' ? now : null);
+            const timeOnline = createdAt ? (terminatedAt || now) - createdAt : 0;
+            const wallClockTime = formatTimestamp(now);
+            
+            return \`
+              <div style="padding:15px;background:white;border-radius:8px;border-left:4px solid #667eea;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                <strong style="display:block;margin-bottom:10px;color:#667eea;font-size:0.95em;">Worker: \${id}</strong>
+                <div style="font-size:0.85em;color:#666;line-height:1.8;">
+                  <div><strong>Start Time:</strong> <span style="color:#333;">\${formatTimestamp(createdAt)}</span></div>
+                  <div><strong>End Time:</strong> <span style="color:#333;">\${terminatedAt ? formatTimestamp(terminatedAt) : 'Still Running'}</span></div>
+                  <div><strong>Time Online:</strong> <span style="color:#28a745;font-weight:600;">\${formatDuration(timeOnline)}</span></div>
+                  <div><strong>Time on Wall:</strong> <span style="color:#333;">\${wallClockTime}</span></div>
+                  <div><strong>Status:</strong> <span style="color:\${worker.status === 'idle' ? '#28a745' : worker.status === 'working' ? '#ffc107' : worker.status === 'error' ? '#dc3545' : '#666'};font-weight:600;">\${worker.status || 'unknown'}</span></div>
+                </div>
+              </div>
+            \`;
+          }).join('') + '</div></div>' : '';
         
         const content = \`
           \${errorMessage}
@@ -6566,16 +7060,125 @@ async function loadWorkers() {
               <div style="font-size:2em;font-weight:800;">\${summary.error || 0}</div>
             </div>
           </div>
+          \${workerTimingDetails}
           <pre style="background:#1e1e1e;color:#d4d4d4;padding:25px;border-radius:12px;overflow:auto;font-family:'Monaco','Courier New',monospace;font-size:0.9em;line-height:1.6;border:2px solid #333;box-shadow:inset 0 2px 8px rgba(0,0,0,0.3);">\${highlighted}</pre>
           <div style="margin-top:20px;padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
             <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Tip</strong>
             <span style="color:#666;font-size:0.9em;">Access via <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">GET /api/dev/workers</code> or WebSocket at <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">ws://localhost:\${WORKER_API_PORT_VALUE}/ws/workers/telemetry</code></span>
           </div>
+          \${Object.keys(data.workers || {}).length > 0 ? '<div style="margin-top:20px;padding:15px;background:#f8f9fa;border-radius:8px;"><strong style="display:block;margin-bottom:10px;">📥 Download Snapshots</strong><div style="display:flex;flex-wrap:wrap;gap:8px;">' + Object.keys(data.workers).map(id => \`<button onclick="downloadWorkerSnapshot('\${id}')" style="padding:6px 12px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;font-size:0.85em;font-weight:600;">📥 \${id}</button>\`).join('') + '</div></div>' : ''}
         \`;
         
         createModal('👷 Worker Registry', content);
       } catch (error) {
-        alert('Failed to load workers: ' + handleError(error, 'Unknown error'));
+        // UX Excellence: Modal preserves context instead of alert
+        createModal('❌ Failed to Load Workers', \`
+          <div style="padding:20px;">
+            <div style="margin-bottom:15px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
+              <strong style="color:#fd7e14;display:block;margin-bottom:5px;">❌ Error Loading Worker Registry</strong>
+              <span style="color:#666;font-size:0.9em;">\${handleError(error, 'Unknown error')}</span>
+            </div>
+            <div style="padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+              <strong style="color:#0d6efd;display:block;margin-bottom:10px;">💡 Troubleshooting</strong>
+              <ul style="color:#666;font-size:0.9em;margin:8px 0 15px 0;padding-left:20px;">
+                <li>Ensure Worker Telemetry API is running: <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run scripts/worker-telemetry-api.ts</code></li>
+                <li>Check network connectivity to port \${WORKER_API_PORT_VALUE}</li>
+                <li>Verify authentication token is set correctly</li>
+              </ul>
+              <div style="margin-top:15px;padding-top:15px;border-top:1px solid #b3d9ff;">
+                <button onclick="loadWorkers(); this.closest('div').parentElement.parentElement.parentElement.remove();" style="background:#28a745;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.95em;transition:all 0.2s;margin-right:10px;">🔄 Retry</button>
+                <span style="color:#666;font-size:0.85em;">Click Retry after resolving the issue.</span>
+              </div>
+            </div>
+          </div>
+        \`, { width: MODAL_NARROW_WIDTH });
+      }
+    }
+    
+    async function downloadWorkerSnapshot(workerId) {
+      try {
+        // TES-SEC: Include auth token for snapshot requests
+        const devToken = document.querySelector('meta[name="tes-dev-token"]')?.getAttribute('content') || 'dev-token-default';
+        const response = await fetch(\`/api/workers/snapshot/\${workerId}\`, {
+          headers: {
+            'X-TES-Dev-Token': devToken,
+          },
+        });
+        
+        if (!response.ok) {
+          // Check if it's a JSON error response
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            // UX Excellence: Modal preserves context, actionable solution, non-destructive retry
+            // Enhanced with tmux-aware error recovery
+            createModal('⚠️ Snapshot Not Available', \`
+              <div style="padding:20px;">
+                <div style="margin-bottom:15px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
+                  <strong style="color:#fd7e14;display:block;margin-bottom:5px;">⚠️ \${errorData.error || 'Worker snapshot not available'}</strong>
+                  <span style="color:#666;font-size:0.9em;">\${errorData.message || 'Unable to generate snapshot for worker ' + workerId}</span>
+                </div>
+                \${errorData.message && errorData.message.includes('Worker Telemetry API') ? \`
+                  <div style="padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;margin-bottom:15px;">
+                    <strong style="color:#0d6efd;display:block;margin-bottom:5px;">💡 Solution</strong>
+                    <span style="color:#666;font-size:0.9em;display:block;margin-bottom:10px;">Start the Worker Telemetry API:</span>
+                    <div style="margin-bottom:15px;">
+                      <code style="background:#fff;padding:6px 12px;border-radius:4px;color:#0d6efd;display:inline-block;font-family:monospace;font-size:0.9em;border:1px solid #0d6efd;">bun run scripts/worker-telemetry-api.ts</code>
+                      <span style="color:#666;font-size:0.85em;margin-left:10px;">or</span>
+                      <button onclick="startTmuxSession(); this.closest('div').parentElement.parentElement.parentElement.remove();" style="background:#667eea;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-weight:600;font-size:0.85em;margin-left:10px;">🚀 Start Full Environment</button>
+                    </div>
+                    <div style="margin-top:15px;padding-top:15px;border-top:1px solid #b3d9ff;">
+                      <button onclick="downloadWorkerSnapshot('\${workerId}'); this.closest('div').parentElement.parentElement.parentElement.remove();" style="background:#28a745;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.95em;transition:all 0.2s;margin-right:10px;">🔄 Retry Download</button>
+                      <span style="color:#666;font-size:0.85em;">After starting the API, click Retry to download the snapshot.</span>
+                    </div>
+                  </div>
+                \` : ''}
+              </div>
+            \`, { width: MODAL_NARROW_WIDTH });
+            return;
+          }
+          throw new Error(\`HTTP \${response.status}: \${response.statusText}\`);
+        }
+        
+        // Download the snapshot file
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = \`worker-snapshot-\${workerId}-\${Date.now()}.json.gz\`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Show success message
+        const notification = document.createElement('div');
+        notification.style.cssText = 'position:fixed;top:20px;right:20px;padding:15px 20px;background:#28a745;color:white;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:10000;font-weight:600;';
+        notification.textContent = '✅ Snapshot downloaded successfully';
+        document.body.appendChild(notification);
+        setTimeout(() => notification.remove(), 3000);
+      } catch (error) {
+        // UX Excellence: Modal preserves context, actionable troubleshooting, non-destructive retry
+        createModal('❌ Snapshot Download Failed', \`
+          <div style="padding:20px;">
+            <div style="margin-bottom:15px;padding:15px;background:#fff4e6;border-radius:8px;border-left:4px solid #fd7e14;">
+              <strong style="color:#fd7e14;display:block;margin-bottom:5px;">❌ Failed to download snapshot</strong>
+              <span style="color:#666;font-size:0.9em;">\${handleError(error, 'Unknown error')}</span>
+            </div>
+            <div style="padding:15px;background:#e7f3ff;border-radius:8px;border-left:4px solid #0d6efd;">
+              <strong style="color:#0d6efd;display:block;margin-bottom:10px;">💡 Troubleshooting</strong>
+              <ul style="color:#666;font-size:0.9em;margin:8px 0 15px 0;padding-left:20px;">
+                <li>Ensure Worker Telemetry API is running: <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">bun run scripts/worker-telemetry-api.ts</code></li>
+                <li>Verify worker ID is valid: <code style="background:#fff;padding:2px 6px;border-radius:4px;color:#0d6efd;">\${workerId}</code></li>
+                <li>Check that the worker is still active</li>
+              </ul>
+              <div style="margin-top:15px;padding-top:15px;border-top:1px solid #b3d9ff;">
+                <button onclick="downloadWorkerSnapshot('\${workerId}'); this.closest('div').parentElement.parentElement.parentElement.remove();" style="background:#28a745;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;font-size:0.95em;transition:all 0.2s;margin-right:10px;">🔄 Retry Download</button>
+                <span style="color:#666;font-size:0.85em;">Click Retry after resolving the issue.</span>
+              </div>
+            </div>
+          </div>
+        \`, { width: MODAL_NARROW_WIDTH });
       }
     }
     
@@ -7220,6 +7823,20 @@ async function loadWorkers() {
     
     // Auto-refresh Shadow WS status every 10 seconds
     setInterval(checkShadowWSStatus, 10000);
+    
+    // Load custom components for Operational Status section
+    (async () => {
+      try {
+        await         Promise.all([
+          import('./src/dashboard/components/system-status.ts'),
+          import('./src/dashboard/components/metrics-stream.ts'),
+          import('./src/dashboard/components/tmux-control-panel.ts'),
+          import('./src/dashboard/components/worker-snapshot-panel.ts')
+        ]);
+      } catch (error) {
+        console.warn('Failed to load operational status components:', error);
+      }
+    })();
   </script>
 </body>
 </html>`;
@@ -7870,7 +8487,7 @@ const devServer = Bun.serve<WebSocketData>({
           'X-APEX-Scope': 'AI-Immunity Indexing',
           'X-APEX-Meta': 'Real-time Color Generation',
           'X-APEX-Type': 'Visualizer',
-          'X-APEX-Version': PACKAGE_VERSION,
+          'X-APEX-Version': TENSION_VISUALIZER_VERSION,
           'X-APEX-Component': 'tension-visualizer',
         },
       });
@@ -8632,6 +9249,157 @@ const devServer = Bun.serve<WebSocketData>({
       }
     },
     
+    // @ROUTE GET /api/dev/tmux/status
+    // Get tmux session status
+    '/api/dev/tmux/status': async () => {
+      const startTime = performance.now();
+      try {
+        const { spawn } = await import('child_process');
+        
+        // Run tmux status script
+        const proc = spawn('bun', ['run', 'scripts/tmux-tes-dev.ts', 'status', '--json'], {
+          cwd: process.cwd(),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        proc.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        proc.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        await new Promise<void>((resolve, reject) => {
+          proc.on('close', (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(new Error(stderr || `Process exited with code ${code}`));
+            }
+          });
+        });
+        
+        const status = JSON.parse(stdout);
+        
+        return jsonResponse(status, 200, {
+          domain: 'dev',
+          scope: 'tmux',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        // If tmux script fails, return offline status
+        return jsonResponse({
+          online: false,
+          session: 'tes-dev',
+          error: error instanceof Error ? error.message : String(error),
+        }, 200, {
+          domain: 'dev',
+          scope: 'tmux',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      }
+    },
+    
+    // @ROUTE POST /api/dev/tmux/start
+    // Start tmux session
+    '/api/dev/tmux/start': async () => {
+      const startTime = performance.now();
+      try {
+        const { spawn } = await import('child_process');
+        
+        // Start tmux session in background
+        const proc = spawn('bun', ['run', 'scripts/tmux-tes-dev.ts', 'start'], {
+          cwd: process.cwd(),
+          stdio: 'ignore',
+          detached: true,
+        });
+        
+        proc.unref();
+        
+        // Wait a moment for session to start
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        return jsonResponse({
+          success: true,
+          message: 'Tmux session started',
+          session: 'tes-dev',
+        }, 200, {
+          domain: 'dev',
+          scope: 'tmux',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to start tmux session: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'tmux', version: 'v1.0' }
+        );
+      }
+    },
+    
+    // @ROUTE POST /api/dev/tmux/stop
+    // Stop tmux session
+    '/api/dev/tmux/stop': async () => {
+      const startTime = performance.now();
+      try {
+        const { spawn } = await import('child_process');
+        
+        const proc = spawn('bun', ['run', 'scripts/tmux-tes-dev.ts', 'kill'], {
+          cwd: process.cwd(),
+          stdio: 'pipe',
+        });
+        
+        let stdout = '';
+        let stderr = '';
+        
+        proc.stdout.on('data', (data) => {
+          stdout += data.toString();
+        });
+        
+        proc.stderr.on('data', (data) => {
+          stderr += data.toString();
+        });
+        
+        await new Promise<void>((resolve, reject) => {
+          proc.on('close', (code) => {
+            if (code === 0 || stderr.includes('not running')) {
+              resolve();
+            } else {
+              reject(new Error(stderr || `Process exited with code ${code}`));
+            }
+          });
+        });
+        
+        return jsonResponse({
+          success: true,
+          message: 'Tmux session stopped',
+          session: 'tes-dev',
+        }, 200, {
+          domain: 'dev',
+          scope: 'tmux',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to stop tmux session: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'tmux', version: 'v1.0' }
+        );
+      }
+    },
+    
     '/api/dev/configs': async () => {
       const startTime = performance.now();
       trackRequestStart();
@@ -8702,6 +9470,50 @@ const devServer = Bun.serve<WebSocketData>({
       trackRequestStart();
       
       try {
+        // TES-SEC: Auth check - Require X-TES-Dev-Token for /api/dev/workers/* endpoints
+        const devToken = req.headers.get('X-TES-Dev-Token');
+        const expectedToken = process.env.TES_DEV_TOKEN || 'dev-token-default';
+        if (devToken !== expectedToken) {
+          await logTESEvent('worker:registry:auth_failed', {
+            reason: 'Missing or invalid X-TES-Dev-Token',
+          });
+          return errorResponse(
+            'Unauthorized: X-TES-Dev-Token header required',
+            401,
+            { domain: 'dev', scope: 'workers', version: `v${DEV_SERVER_VERSION}` }
+          );
+        }
+        
+        // TES-SEC: CORS - Restrict origin to localhost:3002 only
+        const origin = req.headers.get('Origin');
+        if (origin) {
+          try {
+            const originUrl = new URL(origin);
+            const isLocalhost = originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1';
+            // Strict check: must be exactly port 3002
+            const isPort3002 = originUrl.port === '3002';
+            if (!isLocalhost || !isPort3002) {
+              await logTESEvent('worker:registry:cors_blocked', {
+                origin,
+              });
+              return errorResponse(
+                'Forbidden: Origin not allowed',
+                403,
+                { domain: 'dev', scope: 'workers', version: `v${DEV_SERVER_VERSION}` }
+              );
+            }
+          } catch {
+            await logTESEvent('worker:registry:cors_blocked', {
+              origin: 'invalid',
+            });
+            return errorResponse(
+              'Forbidden: Invalid origin',
+              403,
+              { domain: 'dev', scope: 'workers', version: `v${DEV_SERVER_VERSION}` }
+            );
+          }
+        }
+        
         // ✅ Bun-Specific Optimization: Use SharedMap for zero-copy worker state
         // Pattern: Atomic read (no serialization cost)
         let state: Record<string, WorkerInfo> | null = null;
@@ -10197,7 +11009,93 @@ const devServer = Bun.serve<WebSocketData>({
       });
     },
     
+    // @ROUTE GET /api/dev/server-metrics
+    // Bun native server metrics (zero-cost observability)
+    '/api/dev/server-metrics': async (req, server) => {
+      const startTime = performance.now();
+      try {
+        const memUsage = process.memoryUsage();
+        const subscribers = getLiveSubscriberMetrics(server);
+        
+        const metrics = {
+          timestamp: Date.now(),
+          http: {
+            pendingRequests: server.pendingRequests,
+            totalRequests: (server as any).requestCount || 0
+          },
+          websockets: {
+            pendingConnections: server.pendingWebSockets,
+            subscribers: {
+              chat: subscribers.chat,
+              status: subscribers.statusPanel,
+              workers: subscribers.workerUpdates,
+              spline: subscribers.spline
+            },
+            totalSubscribers: subscribers.total
+          },
+          memory: {
+            used: memUsage,
+            heapUsed: memUsage.heapUsed,
+            heapTotal: memUsage.heapTotal,
+            rss: memUsage.rss,
+            external: memUsage.external,
+            arrayBuffers: memUsage.arrayBuffers || 0
+          }
+        };
+        
+        return Response.json(metrics, {
+          headers: {
+            'Cache-Control': 'no-store',
+            'X-Metrics-Source': 'bun-native',
+            'X-TES-Metrics-Version': '1.0'
+          }
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to get server metrics: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'metrics', version: 'v1.0' }
+        );
+      }
+    },
+    
+    // @ROUTE GET /api/dev/server-metrics/live
+    // WebSocket stream for real-time metrics updates
+    '/api/dev/server-metrics/live': async (req, server) => {
+      if (server.upgrade(req, {
+        data: {
+          pathname: new URL(req.url).pathname
+        }
+      })) {
+        return; // Upgrade successful
+      }
+      return new Response('WebSocket upgrade failed', { status: 500 });
+    },
+    
+    // @ROUTE GET /api/dev/status
+    // Comprehensive system status with enhanced vector format
     '/api/dev/status': async (req, server) => {
+      const startTime = performance.now();
+      try {
+        const status = await getEnhancedStatus();
+        
+        return Response.json(status, {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'X-TES-Status-Version': '2.0'
+          }
+        });
+      } catch (error) {
+        return errorResponse(
+          `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
+          500,
+          { domain: 'dev', scope: 'status', version: 'v2.0' }
+        );
+      }
+    },
+    
+    // Legacy status endpoint (backward compatibility)
+    '/api/dev/status/legacy': async (req, server) => {
       const startTime = performance.now();
       try {
         const configs = loadConfigs();
@@ -13101,9 +13999,53 @@ const devServer = Bun.serve<WebSocketData>({
     
     // @ROUTE GET /api/workers/registry
     // Get all active workers
+    // TES-SEC: Auth, CORS protection
     '/api/workers/registry': async (req, server) => {
       const startTime = performance.now();
       try {
+        // TES-SEC: Auth check - Require X-TES-Dev-Token for /api/dev/workers/* endpoints
+        const devToken = req.headers.get('X-TES-Dev-Token');
+        const expectedToken = process.env.TES_DEV_TOKEN || 'dev-token-default';
+        if (devToken !== expectedToken) {
+          await logTESEvent('worker:registry:auth_failed', {
+            reason: 'Missing or invalid X-TES-Dev-Token',
+          });
+          return errorResponse(
+            'Unauthorized: X-TES-Dev-Token header required',
+            401,
+            { domain: 'system', scope: 'workers', version: 'v1.0' }
+          );
+        }
+        
+        // TES-SEC: CORS - Restrict origin to localhost:3002 only
+        const origin = req.headers.get('Origin');
+        if (origin) {
+          try {
+            const originUrl = new URL(origin);
+            const isLocalhost = originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1';
+            const isPort3002 = originUrl.port === '3002' || (!originUrl.port && originUrl.protocol === 'http:');
+            if (!isLocalhost || !isPort3002) {
+              await logTESEvent('worker:registry:cors_blocked', {
+                origin,
+              });
+              return errorResponse(
+                'Forbidden: Origin not allowed',
+                403,
+                { domain: 'system', scope: 'workers', version: 'v1.0' }
+              );
+            }
+          } catch {
+            await logTESEvent('worker:registry:cors_blocked', {
+              origin: 'invalid',
+            });
+            return errorResponse(
+              'Forbidden: Invalid origin',
+              403,
+              { domain: 'system', scope: 'workers', version: 'v1.0' }
+            );
+          }
+        }
+        
         const workers = getWorkerRegistry();
         return jsonResponse({
           workers,
@@ -13127,9 +14069,54 @@ const devServer = Bun.serve<WebSocketData>({
     
     // @ROUTE POST /api/workers/scale
     // Scale workers (spawn, terminate, list)
+    // TES-SEC: Auth, CORS protection
     '/api/workers/scale': async (req, server) => {
       const startTime = performance.now();
       try {
+        // TES-SEC: Auth check - Require X-TES-Dev-Token for /api/dev/workers/* endpoints
+        const devToken = req.headers.get('X-TES-Dev-Token');
+        const expectedToken = process.env.TES_DEV_TOKEN || 'dev-token-default';
+        if (devToken !== expectedToken) {
+          await logTESEvent('worker:scale:auth_failed', {
+            reason: 'Missing or invalid X-TES-Dev-Token',
+          });
+          return errorResponse(
+            'Unauthorized: X-TES-Dev-Token header required',
+            401,
+            { domain: 'system', scope: 'workers', version: 'v1.0' }
+          );
+        }
+        
+        // TES-SEC: CORS - Restrict origin to localhost:3002 only
+        const origin = req.headers.get('Origin');
+        if (origin) {
+          try {
+            const originUrl = new URL(origin);
+            const isLocalhost = originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1';
+            // Strict check: must be exactly port 3002
+            const isPort3002 = originUrl.port === '3002';
+            if (!isLocalhost || !isPort3002) {
+              await logTESEvent('worker:scale:cors_blocked', {
+                origin,
+              });
+              return errorResponse(
+                'Forbidden: Origin not allowed',
+                403,
+                { domain: 'system', scope: 'workers', version: 'v1.0' }
+              );
+            }
+          } catch {
+            await logTESEvent('worker:scale:cors_blocked', {
+              origin: 'invalid',
+            });
+            return errorResponse(
+              'Forbidden: Invalid origin',
+              403,
+              { domain: 'system', scope: 'workers', version: 'v1.0' }
+            );
+          }
+        }
+        
         if (req.method !== 'POST') {
           return errorResponse('Method not allowed', 405, {
             domain: 'system',
@@ -13174,12 +14161,124 @@ const devServer = Bun.serve<WebSocketData>({
     
     // @ROUTE GET /api/workers/snapshot/:id
     // Stream heap snapshot for a worker
+    // TES-OPS: Error logging, metrics, rate limiting, auth, CORS
     '/api/workers/snapshot/:id': async (req: BunRequest<'/api/workers/snapshot/:id'>, server) => {
       const startTime = performance.now();
+      const { id } = req.params;
+      
       try {
-        const { id } = req.params;
-        return await handleWorkerSnapshot(req, { id });
+        // TES-SEC: Auth check - Require X-TES-Dev-Token for /api/dev/workers/* endpoints
+        const devToken = req.headers.get('X-TES-Dev-Token');
+        const expectedToken = process.env.TES_DEV_TOKEN || 'dev-token-default';
+        if (devToken !== expectedToken) {
+          await logTESEvent('worker:snapshot:auth_failed', {
+            workerId: id,
+            reason: 'Missing or invalid X-TES-Dev-Token',
+          });
+          return errorResponse(
+            'Unauthorized: X-TES-Dev-Token header required',
+            401,
+            { domain: 'system', scope: 'workers', version: 'v1.0' }
+          );
+        }
+        
+        // TES-SEC: CORS - Restrict origin to localhost:3002 only
+        const origin = req.headers.get('Origin');
+        if (origin) {
+          try {
+            const originUrl = new URL(origin);
+            const isLocalhost = originUrl.hostname === 'localhost' || originUrl.hostname === '127.0.0.1';
+            // Strict check: must be exactly port 3002
+            const isPort3002 = originUrl.port === '3002';
+            if (!isLocalhost || !isPort3002) {
+              await logTESEvent('worker:snapshot:cors_blocked', {
+                workerId: id,
+                origin,
+              });
+              return errorResponse(
+                'Forbidden: Origin not allowed',
+                403,
+                { domain: 'system', scope: 'workers', version: 'v1.0' }
+              );
+            }
+          } catch {
+            // Invalid origin URL, deny access
+            await logTESEvent('worker:snapshot:cors_blocked', {
+              workerId: id,
+              origin: 'invalid',
+            });
+            return errorResponse(
+              'Forbidden: Invalid origin',
+              403,
+              { domain: 'system', scope: 'workers', version: 'v1.0' }
+            );
+          }
+        }
+        
+        // TES-SEC: Rate limiting - Max 1 snapshot request per worker per 10 seconds
+        const rateLimitResult = checkWorkerSnapshotRateLimit(id);
+        if (!rateLimitResult.allowed) {
+          await logTESEvent('worker:snapshot:rate_limited', {
+            workerId: id,
+            retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+          });
+          const retryAfter = Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000);
+          const headers = new Headers(apiHeaders({
+            domain: 'system',
+            scope: 'workers',
+            version: 'v1.0',
+          }));
+          // Add rate limit headers
+          headers.set('Retry-After', String(retryAfter));
+          headers.set('X-RateLimit-Limit', '1');
+          headers.set('X-RateLimit-Remaining', '0');
+          headers.set('X-RateLimit-Reset', String(rateLimitResult.resetAt));
+          
+          return Response.json(
+            {
+              error: 'Rate limit exceeded',
+              message: `Max 1 snapshot per worker per 10 seconds. Retry after ${retryAfter} seconds`,
+              retryAfter,
+            },
+            {
+              status: 429,
+              headers,
+            }
+          );
+        }
+        
+        // TES-MON-005: Increment metrics counter
+        incrementMetric('tes_worker_snapshot_requests_total');
+        
+        // Call handler
+        const response = await handleWorkerSnapshot(req, { id });
+        
+        // Log success
+        if (response.ok) {
+          const duration = performance.now() - startTime;
+          await logTESEvent('worker:snapshot:success', {
+            workerId: id,
+            duration: `${duration.toFixed(2)}ms`,
+          });
+        } else {
+          // Log failure
+          const errorText = await response.clone().text().catch(() => 'Unknown error');
+          await logTESEvent('worker:snapshot:failed', {
+            workerId: id,
+            status: response.status,
+            error: errorText.substring(0, 200), // Limit error message length
+          });
+        }
+        
+        return response;
       } catch (error) {
+        // TES-OPS: Error logging
+        await logTESEvent('worker:snapshot:failed', {
+          workerId: id,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+        
         return errorResponse(
           `Failed to get worker snapshot: ${error instanceof Error ? error.message : String(error)}`,
           500,
@@ -13649,6 +14748,72 @@ const devServer = Bun.serve<WebSocketData>({
       // Store client ID for metrics tracking
       (ws as any).clientId = clientId;
       
+      if (pathname.includes('/ws/server-metrics/live')) {
+        // Live metrics stream connection
+        ws.subscribe('server-metrics-live');
+        console.log(`[WS-Metrics] Client connected: ${clientId}`);
+        
+        // Send initial metrics
+        const memUsage = process.memoryUsage();
+        const subscribers = getLiveSubscriberMetrics(devServer);
+        ws.send(JSON.stringify({
+          type: 'metrics',
+          timestamp: Date.now(),
+          http: {
+            pendingRequests: devServer.pendingRequests
+          },
+          websockets: {
+            pendingConnections: devServer.pendingWebSockets,
+            subscribers: {
+              chat: subscribers.chat,
+              status: subscribers.statusPanel,
+              workers: subscribers.workerUpdates,
+              spline: subscribers.spline
+            },
+            totalSubscribers: subscribers.total
+          },
+          memory: {
+            heapUsed: memUsage.heapUsed,
+            rss: memUsage.rss
+          }
+        }));
+        
+        // Start metrics broadcast interval (every 500ms)
+        const metricsInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            const memUsage = process.memoryUsage();
+            const subscribers = getLiveSubscriberMetrics(devServer);
+            ws.send(JSON.stringify({
+              type: 'metrics',
+              timestamp: Date.now(),
+              http: {
+                pendingRequests: devServer.pendingRequests
+              },
+              websockets: {
+                pendingConnections: devServer.pendingWebSockets,
+                subscribers: {
+                  chat: subscribers.chat,
+                  status: subscribers.statusPanel,
+                  workers: subscribers.workerUpdates,
+                  spline: subscribers.spline
+                },
+                totalSubscribers: subscribers.total
+              },
+              memory: {
+                heapUsed: memUsage.heapUsed,
+                rss: memUsage.rss
+              }
+            }));
+          } else {
+            clearInterval(metricsInterval);
+          }
+        }, 500);
+        
+        // Store interval for cleanup
+        (ws as any).metricsInterval = metricsInterval;
+        return;
+      }
+      
       if (pathname.includes('/ws/spline-live')) {
         // Spline live stream connection
         splineLiveClients.add(ws);
@@ -13711,8 +14876,17 @@ const devServer = Bun.serve<WebSocketData>({
       const pathname = ws.data.pathname || '';
       const clientId = (ws as any).clientId || 'unknown';
       
+      if (pathname.includes('/ws/server-metrics/live')) {
+        // Clean up metrics interval
+        const interval = (ws as any).metricsInterval;
+        if (interval) {
+          clearInterval(interval);
+        }
+        console.log(`[WS-Metrics] Client disconnected: ${clientId} (code: ${code})`);
+        return;
+      }
+      
       if (pathname.includes('/ws/spline-live')) {
-        // Spline live stream disconnection
         splineLiveClients.delete(ws);
         const savings = getCompressionSavings(clientId);
         console.log(`[WS-Spline] Client disconnected: ${clientId} (${splineLiveClients.size} remaining)`);
@@ -13865,6 +15039,9 @@ console.log(`   GET  /api/dev/workers    → Worker telemetry`);
 console.log(`   GET  /api/dev/status     → System status`);
 console.log(`   GET  /api/dev/metrics    → Server metrics (pendingRequests, pendingWebSockets)`);
 console.log(`   GET  /api/dev/event-loop → Event loop monitoring metrics`);
+console.log(`   GET  /api/dev/tmux/status → Tmux session status`);
+console.log(`   POST /api/dev/tmux/start  → Start tmux session`);
+console.log(`   POST /api/dev/tmux/stop   → Stop tmux session`);
 console.log(`   GET  /api/lifecycle/export → Export lifecycle visualization data`);
 console.log(`   GET  /api/lifecycle/health → TES lifecycle health check`);
 console.log(`   GET  /tes-dashboard.html → TES lifecycle dashboard`);
