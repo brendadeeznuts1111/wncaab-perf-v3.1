@@ -8,9 +8,12 @@
  */
 
 import type { Bun } from "bun";
+import { getTESDomainConfigCached } from "../config/tes-domain-config.ts";
 
 /**
  * Create secure, immutable cookie with rg audit logging
+ * 
+ * Uses TES domain configuration for dynamic cookie domain setting (TES-OPS-003.2)
  * 
  * @param name - Cookie name (e.g., "tes-jwt")
  * @param value - Cookie value (JWT token)
@@ -24,13 +27,17 @@ export function createSecureCookie(
 ): Bun.Cookie {
   const cookie = new Bun.Cookie(name, value);
   
+  // Get TES domain configuration for dynamic cookie domain
+  const tesConfig = getTESDomainConfigCached();
+  
   // Apply security hardening defaults
   cookie.httpOnly = options?.httpOnly ?? true;
   cookie.secure = options?.secure ?? true;
   cookie.sameSite = options?.sameSite ?? "strict";
   cookie.maxAge = options?.maxAge ?? 3600;
   cookie.path = options?.path ?? "/";
-  cookie.domain = options?.domain ?? "nowgoal26.com";
+  // Use TES domain configuration (TES-OPS-003.2: Dynamic TES Cookie Domain Setting)
+  cookie.domain = options?.domain ?? tesConfig.cookieDomain;
   
   // Apply any additional options
   if (options?.expires) cookie.expires = options.expires;
@@ -65,20 +72,25 @@ function logHeadersForRg(rgBlock: string): void {
 /**
  * Create session cookie for JWT token
  * 
- * Convenience wrapper for creating tes-jwt session cookies
+ * Convenience wrapper for creating tes-jwt session cookies.
+ * Uses TES domain configuration for dynamic cookie domain (TES-OPS-003.2)
  * 
  * @param jwtToken - JWT token string
- * @param domain - Cookie domain (default: ".nowgoal26.com")
+ * @param domain - Cookie domain (optional, uses TES domain config if not provided)
  * @param maxAge - Cookie max age in seconds (default: 3600)
  * @returns Frozen Bun.Cookie object
  */
 export function createSessionCookie(
   jwtToken: string,
-  domain: string = ".nowgoal26.com",
+  domain?: string,
   maxAge: number = 3600
 ): Bun.Cookie {
+  // Get TES domain configuration if domain not provided
+  const tesConfig = getTESDomainConfigCached();
+  const cookieDomain = domain ?? tesConfig.cookieDomain;
+  
   return createSecureCookie("tes-jwt", jwtToken, {
-    domain,
+    domain: cookieDomain,
     maxAge,
     httpOnly: true,
     secure: true,

@@ -1,12 +1,14 @@
+import { logTESError } from './tes-error-inspector.ts';
+
 // CPU usage tracking for accurate percentage calculation
 let previousCpuUsage: NodeJS.CpuUsage | null = null;
 let previousCpuTime: number = Date.now();
 
 /**
- * Get current CPU load as a percentage (0-100)
- * Returns value rounded to 1 decimal place
+ * Sample CPU load using delta sampling
+ * @returns CPU percentage (0-100) with 1 decimal precision
  */
-export async function getCpuLoad(): Promise<number> {
+async function sampleCpuLoad(): Promise<number> {
   const currentUsage = process.cpuUsage(previousCpuUsage || undefined);
   const currentTime = Date.now();
   
@@ -35,11 +37,36 @@ export async function getCpuLoad(): Promise<number> {
   const capped = Math.min(percentage, 100);
   const value = parseFloat(capped.toFixed(1));
   
-  // Runtime validation: Ensure CPU value is within valid range
-  if (value < 0 || value > 100) {
-    throw new Error(`Invalid CPU value: ${value}`);
-  }
-  
   return value;
+}
+
+/**
+ * Get current CPU load as a percentage (0-100)
+ * Returns value rounded to 1 decimal place
+ * @ticket TES-OPS-004.B.8.15 - Enhanced error inspection
+ */
+export async function getCpuLoad(): Promise<number> {
+  try {
+    const value = await sampleCpuLoad();
+    
+    // ✅ Runtime validation with enhanced logging
+    if (value < 0 || value > 100) {
+      const error = new Error(`Invalid CPU value: ${value}`);
+      logTESError(error, {
+        metrics: { rawValue: value },
+        route: '/api/dev/status'
+      });
+      return 0; // Fail-safe
+    }
+    
+    return value;
+  } catch (error) {
+    // ✅ Auto-include full source context
+    logTESError(error, {
+      route: '/api/dev/status',
+      component: 'status-aggregator'
+    });
+    return 0; // Fail-safe
+  }
 }
 

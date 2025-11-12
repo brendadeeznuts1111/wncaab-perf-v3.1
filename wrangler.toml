@@ -1,0 +1,111 @@
+# wrangler.toml - Cloudflare Workers Configuration for TES-NGWS-001 Flux-Veto
+
+name = "tes-ngws-001-flux-veto"
+main = "src/workers/flux-veto-worker.ts"
+compatibility_date = "2024-11-11"
+compatibility_flags = ["nodejs_compat"]
+
+# KV Namespace for durable sessions (default/development)
+[[kv_namespaces]]
+binding = "KV"
+id = "your-kv-namespace-id" # Replace with actual KV namespace ID
+preview_id = "your-preview-kv-namespace-id" # Replace with preview KV namespace ID
+
+# Environment variables (default/development)
+[vars]
+TOKEN_MULTIPLIER = "1.5"
+NOWGOAL_BASE = "https://live.nowgoal26.com"
+JWT_ENDPOINT = "/ajax/getwebsockettoken"
+WS_PROXY = "wss://live.nowgoal26.com/ws"
+# TES-OPS-004.B.4: Version signing key (use secrets in production)
+# VERSION_SIGNING_KEY = "{{ secrets.VERSION_SIGNING_KEY }}"  # Uncomment and set via: wrangler secret put VERSION_SIGNING_KEY
+
+# TES-OPS-004.B.4: Durable Objects Configuration (default/development)
+# [META: DO-BINDINGS] - Stateful Version Management
+[[durable_objects.bindings]]
+name = "VERSION_DO"
+class_name = "VersionManagementDO"
+
+# Durable Objects migrations (required for DO deployment)
+[[migrations]]
+tag = "v1"
+new_classes = ["VersionManagementDO"]
+
+[env.production]
+name = "tes-ngws-001-flux-veto-prod"
+
+# Production KV Namespace
+[[env.production.kv_namespaces]]
+binding = "KV"
+id = "98b094fc212047c4b728a62c3f524f8b"
+preview_id = "37d2c503aa034748b5d61f5c9759062c"
+
+# Production Durable Objects
+[[env.production.durable_objects.bindings]]
+name = "VERSION_DO"
+class_name = "VersionManagementDO"
+
+# Production migrations
+[[env.production.migrations]]
+tag = "v1"
+new_classes = ["VersionManagementDO"]
+
+# TES-NGWS-001.5: Security-Hardened WebSocket Configuration
+[env.production.vars]
+TOKEN_MULTIPLIER = "1.5"
+NOWGOAL_BASE = "https://live.nowgoal26.com"
+JWT_ENDPOINT = "/ajax/getwebsockettoken"
+WS_PROXY = "wss://live.nowgoal26.com/ws"
+# Supported subprotocols (comma-separated, priority order)
+TES_SUPPORTED_SUBPROTOCOLS = "tes-ui-v1,tes-ui-v2"
+# Trusted proxy IPs (comma-separated, CIDR supported)
+# Example: TES_PROXY_IPS = "192.0.2.1,198.51.100.0/24"
+# TES_PROXY_IPS = "{{ secrets.TES_PROXY_IPS }}"
+
+[env.staging]
+name = "tes-ngws-001-flux-veto-staging"
+
+# Staging KV Namespace
+[[env.staging.kv_namespaces]]
+binding = "KV"
+id = "cea14d19173c43a09bc2e031fd10a7d4"
+preview_id = "b67ad440b249439b8d617daee690720c"
+
+# Staging Durable Objects
+[[env.staging.durable_objects.bindings]]
+name = "VERSION_DO"
+class_name = "VersionManagementDO"
+
+# Staging migrations
+[[env.staging.migrations]]
+tag = "v1"
+new_classes = ["VersionManagementDO"]
+
+[env.staging.vars]
+TOKEN_MULTIPLIER = "1.5"
+NOWGOAL_BASE = "https://live.nowgoal26.com"
+JWT_ENDPOINT = "/ajax/getwebsockettoken"
+WS_PROXY = "wss://live.nowgoal26.com/ws"
+# Supported subprotocols (comma-separated, priority order)
+TES_SUPPORTED_SUBPROTOCOLS = "tes-ui-v1,tes-ui-v2"
+# Trusted proxy IPs (comma-separated, CIDR supported)
+# TES_PROXY_IPS = "192.0.2.1"
+
+# Secrets (set via: wrangler secret put)
+# VERSION_SIGNING_KEY - Primary signing key (v1)
+# VERSION_SIGNING_KEY_V2 - Secondary signing key (v2, optional for zero-downtime rotation)
+# TES_PROXY_IPS - Trusted proxy IPs (optional, defaults to empty)
+
+# Routes (optional - for custom domain)
+# [[routes]]
+# pattern = "flux-veto.yourdomain.com/*"
+# zone_name = "yourdomain.com"
+
+# Limits
+[limits]
+cpu_ms = 50
+
+# Build configuration
+[build]
+command = "bun build src/workers/flux-veto-worker.ts --outdir dist --target bun --minify"
+

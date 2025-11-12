@@ -548,7 +548,8 @@ import {
   TENSION_VISUALIZER_VERSION,
   DEV_SERVER_VERSION,
 } from '../src/config/component-versions.ts';
-import { getVersionRegistryLoader, type LoadedVersionEntity } from '../src/config/version-registry-loader.ts';
+import { verifyCsrfFromRequest } from '../src/lib/csrf-guard.ts';
+import { generateCsrfToken } from '../src/lib/csrf-guard.ts';
 
 // Helper function to categorize colors for the API
 function getColorCategory(name: string): string {
@@ -6610,7 +6611,9 @@ async function generateDashboard() {
           requestBody.entity = entityId;
         }
         
-        const response = await fetch('/api/dev/bump-version', {
+        // TES-OPS-004.B.4: Use CSRF-aware fetch wrapper
+        // Bun.CSRF protection: https://bun.com/blog/bun-v1.3#csrf-protection
+        const response = await TESApi.fetch('/api/dev/bump-version', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -6795,6 +6798,134 @@ async function generateDashboard() {
         console.warn('[TES] Failed to load from cache:', error);
         return null;
       }
+    }
+    
+    // TES-NGWS-001.5: WebSocket Auto-Refresh with Security-Hardened Foundation
+    /**
+     * WebSocket connection for real-time version entity updates
+     * TES-NGWS-001.5: Enhanced with Bun 1.3+ RFC 6455 subprotocol negotiation
+     * - One-Time CSRF Token: Fetched via HTTP, passed in upgrade request
+     * - Automatic permessage-deflate compression enabled by default
+     * - Thread: 0x6001 (Version Management), Channel: COMMAND_CHANNEL
+     */
+    let versionWs: WebSocket | null = null;
+    let versionWsReconnectAttempts = 0;
+    const MAX_WS_RECONNECT_ATTEMPTS = 5;
+    const WS_RECONNECT_DELAY = 3000;
+    
+    async function connectVersionWebSocket() {
+      // Only connect if WebSocket is not already connected/connecting
+      if (versionWs && (versionWs.readyState === WebSocket.CONNECTING || versionWs.readyState === WebSocket.OPEN)) {
+        return;
+      }
+      
+      try {
+        // === TES-NGWS-001.5.B.5: Fetch one-time CSRF token ===
+        // CSRF token delivered via HTTP header, NOT WebSocket frame (CRIME mitigation)
+        const csrfResponse = await TESApi.fetch('/api/auth/csrf-token');
+        const { token: csrfToken } = await csrfResponse.json();
+        
+        if (!csrfToken) {
+          console.error('[TES-Version-WS] Failed to fetch CSRF token');
+          TESFeedback.show('⚠️ Failed to fetch CSRF token for WebSocket', 'warning');
+          return;
+        }
+        
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // === TES-NGWS-001.5.B.5: Pass CSRF token as query parameter ===
+        // Note: Browser WebSocket API doesn't support custom headers
+        // In production (Durable Objects), CSRF is validated via x-tes-ws-csrf-token header
+        const wsUrl = \`\${protocol}//\${window.location.host}/api/dev/version-ws?csrf=\${encodeURIComponent(csrfToken)}\`;
+        
+        // === TES-NGWS-001.5.B.1: RFC 6455 Subprotocol Negotiation ===
+        // Request multiple subprotocols, server selects first supported
+        // tes-ui-v2: Future crypto schema (Ed25519)
+        // tes-ui-v1: Legacy TES-OPS-004 (HMAC-SHA256)
+        versionWs = new WebSocket(wsUrl, ['tes-ui-v2', 'tes-ui-v1']);
+        
+        // Store CSRF token for server-side validation
+        // The dev server WebSocket handler will extract it from the upgrade request
+        (versionWs as any).csrfToken = csrfToken;
+        
+        versionWs.onopen = () => {
+          versionWsReconnectAttempts = 0;
+          // Bun 1.3+ RFC 6455: ws.protocol is now properly populated with server's selected subprotocol
+          const negotiatedProtocol = versionWs?.protocol || 'none';
+          const extensions = (versionWs as any).extensions || 'none';
+          
+          console.log(\`[TES-Version-WS] Connected with protocol: \${negotiatedProtocol}\`);
+          if (extensions.includes('permessage-deflate')) {
+            console.log('[TES-Version-WS] Compression enabled:', extensions);
+          }
+          
+          // Send initial ping to verify connection
+          if (versionWs && versionWs.readyState === WebSocket.OPEN) {
+            versionWs.send(JSON.stringify({ type: 'ping' }));
+          }
+        };
+        
+        versionWs.onmessage = (event) => {
+          try {
+            // Bun 1.3+ Automatic permessage-deflate: Data is automatically decompressed
+            const message = JSON.parse(event.data);
+            
+            if (message.type === 'refresh_response') {
+              // Auto-refresh triggered: Reload version entities
+              console.log('[TES-Version-WS] Refresh response received, reloading entities...');
+              loadVersionEntities();
+            } else if (message.type === 'pong') {
+              // Heartbeat response
+              console.log('[TES-Version-WS] Pong received');
+            } else if (message.type === 'bump_response') {
+              // Version bump completed via WebSocket
+              console.log('[TES-Version-WS] Bump response:', message);
+              TESFeedback.show('✅ Version bumped successfully', 'success');
+              loadVersionEntities();
+            } else if (message.type === 'error') {
+              console.error('[TES-Version-WS] Error:', message.error);
+              TESFeedback.show(\`❌ WebSocket error: \${message.error}\`, 'error');
+            }
+          } catch (error) {
+            console.error('[TES-Version-WS] Failed to parse message:', error);
+          }
+        };
+        
+        versionWs.onerror = (error) => {
+          console.error('[TES-Version-WS] WebSocket error:', error);
+          TESFeedback.show('⚠️ Version WebSocket connection error', 'warning');
+        };
+        
+        versionWs.onclose = (event) => {
+          console.log(\`[TES-Version-WS] Connection closed: \${event.code} - \${event.reason || 'No reason'}\`);
+          
+          // Attempt reconnection with exponential backoff
+          if (versionWsReconnectAttempts < MAX_WS_RECONNECT_ATTEMPTS) {
+            const delay = WS_RECONNECT_DELAY * Math.pow(2, versionWsReconnectAttempts);
+            versionWsReconnectAttempts++;
+            console.log(\`[TES-Version-WS] Reconnecting in \${delay}ms (attempt \${versionWsReconnectAttempts}/\${MAX_WS_RECONNECT_ATTEMPTS})...\`);
+            setTimeout(connectVersionWebSocket, delay);
+          } else {
+            console.warn('[TES-Version-WS] Max reconnection attempts reached. Manual refresh required.');
+            TESFeedback.show('⚠️ Version WebSocket disconnected. Using manual refresh.', 'warning');
+          }
+        };
+      } catch (error) {
+        console.error('[TES-Version-WS] Failed to create WebSocket:', error);
+        TESFeedback.show('⚠️ Failed to connect version WebSocket', 'warning');
+      }
+    }
+    
+    // Connect WebSocket when page loads (if version management section exists)
+    if (document.getElementById('version-management-section')) {
+      connectVersionWebSocket();
+      
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', () => {
+        if (versionWs) {
+          versionWs.close();
+          versionWs = null;
+        }
+      });
     }
     
     /**
@@ -8335,16 +8466,18 @@ const devServer = Bun.serve<WebSocketData>({
   // - Cache-Control headers and ETag headers (automatic cache validation)
   // - Minification of JavaScript/TypeScript/TSX/JSX files
   // 
-  // Development mode (development: { hmr: true, console: true }):
+  // Development mode (development: true):
   // - Hot Module Reloading (HMR) - assets re-bundled on each request
   // - Source maps for debugging
   // - Console log echoing from browser to terminal
-  // - Detailed error messages
+  // - Detailed error messages with built-in error page
+  // - Bun surfaces errors in-browser with stack traces
   // 
   // Set NODE_ENV=production or BUN_ENV=production to enable production mode
+  // [#REF] https://bun.com/docs/runtime/http/error-handling
   // [#REF] https://bun.com/docs/runtime/http/server#development-mode
   // [#REF] https://bun.com/docs/runtime/http/server#production-mode
-  development: DEVELOPMENT_CONFIG,
+  development: IS_DEVELOPMENT,
   
   // Routes property - Bun's native routing system
   // Routes are matched in order of specificity: Exact > Parameter > Wildcard > Catch-all
@@ -9476,6 +9609,10 @@ const devServer = Bun.serve<WebSocketData>({
         if (devToken !== expectedToken) {
           await logTESEvent('worker:registry:auth_failed', {
             reason: 'Missing or invalid X-TES-Dev-Token',
+          }, {
+            threadGroup: 'API_GATEWAY',
+            threadId: '0x2001',
+            channel: 'COMMAND_CHANNEL',
           });
           return errorResponse(
             'Unauthorized: X-TES-Dev-Token header required',
@@ -9495,6 +9632,10 @@ const devServer = Bun.serve<WebSocketData>({
             if (!isLocalhost || !isPort3002) {
               await logTESEvent('worker:registry:cors_blocked', {
                 origin,
+              }, {
+                threadGroup: 'API_GATEWAY',
+                threadId: '0x2001',
+                channel: 'COMMAND_CHANNEL',
               });
               return errorResponse(
                 'Forbidden: Origin not allowed',
@@ -9505,6 +9646,10 @@ const devServer = Bun.serve<WebSocketData>({
           } catch {
             await logTESEvent('worker:registry:cors_blocked', {
               origin: 'invalid',
+            }, {
+              threadGroup: 'API_GATEWAY',
+              threadId: '0x2001',
+              channel: 'COMMAND_CHANNEL',
             });
             return errorResponse(
               'Forbidden: Invalid origin',
@@ -11857,6 +12002,7 @@ const devServer = Bun.serve<WebSocketData>({
     
     // @ROUTE POST /api/dev/bump-version
     // TES-OPS-004.B.7: Version Bump endpoint - Enhanced with targeted entity support
+    // TES-OPS-004.B.4: CSRF Protection using Bun.CSRF (Bun 1.3+)
     '/api/dev/bump-version': async (req) => {
       const startTime = performance.now();
       
@@ -11865,6 +12011,21 @@ const devServer = Bun.serve<WebSocketData>({
           error: 'Method not allowed',
           message: 'Only POST requests are supported',
         }, 405, {
+          domain: 'dev',
+          scope: 'bump-version',
+          version: 'v1.0',
+          includeTiming: true,
+          startTime,
+        });
+      }
+
+      // TES-OPS-004.B.4: Verify CSRF token using Bun.CSRF
+      // Reference: https://bun.com/blog/bun-v1.3#csrf-protection
+      if (!(await verifyCsrfFromRequest(req))) {
+        return jsonResponse({
+          error: 'CSRF token missing or invalid',
+          message: 'CSRF protection: X-CSRF-Token header required',
+        }, 403, {
           domain: 'dev',
           scope: 'bump-version',
           version: 'v1.0',
@@ -11989,6 +12150,37 @@ const devServer = Bun.serve<WebSocketData>({
           500,
           { domain: 'dev', scope: 'bump-version', version: 'v1.0' }
         );
+      }
+    },
+    
+    // @ROUTE GET /api/auth/csrf-token
+    // TES-OPS-004.B.4: CSRF Token Generation Endpoint
+    // Uses Bun.CSRF API (Bun 1.3+) for token generation
+    // Reference: https://bun.com/blog/bun-v1.3#csrf-protection
+    '/api/auth/csrf-token': async (req) => {
+      if (req.method !== 'GET') {
+        return jsonResponse({
+          error: 'Method not allowed',
+          message: 'Only GET requests are supported',
+        }, 405);
+      }
+
+      try {
+        const token = await generateCsrfToken();
+        return jsonResponse({ token }, 200, {
+          domain: 'auth',
+          scope: 'csrf-token',
+          version: 'v1.0',
+        });
+      } catch (error) {
+        return jsonResponse({
+          error: 'Failed to generate CSRF token',
+          message: error instanceof Error ? error.message : String(error),
+        }, 500, {
+          domain: 'auth',
+          scope: 'csrf-token',
+          version: 'v1.0',
+        });
       }
     },
     
@@ -14009,6 +14201,10 @@ const devServer = Bun.serve<WebSocketData>({
         if (devToken !== expectedToken) {
           await logTESEvent('worker:registry:auth_failed', {
             reason: 'Missing or invalid X-TES-Dev-Token',
+          }, {
+            threadGroup: 'API_GATEWAY',
+            threadId: '0x2001',
+            channel: 'COMMAND_CHANNEL',
           });
           return errorResponse(
             'Unauthorized: X-TES-Dev-Token header required',
@@ -14027,6 +14223,10 @@ const devServer = Bun.serve<WebSocketData>({
             if (!isLocalhost || !isPort3002) {
               await logTESEvent('worker:registry:cors_blocked', {
                 origin,
+              }, {
+                threadGroup: 'API_GATEWAY',
+                threadId: '0x2001',
+                channel: 'COMMAND_CHANNEL',
               });
               return errorResponse(
                 'Forbidden: Origin not allowed',
@@ -14037,6 +14237,10 @@ const devServer = Bun.serve<WebSocketData>({
           } catch {
             await logTESEvent('worker:registry:cors_blocked', {
               origin: 'invalid',
+            }, {
+              threadGroup: 'API_GATEWAY',
+              threadId: '0x2001',
+              channel: 'COMMAND_CHANNEL',
             });
             return errorResponse(
               'Forbidden: Invalid origin',
@@ -14079,6 +14283,10 @@ const devServer = Bun.serve<WebSocketData>({
         if (devToken !== expectedToken) {
           await logTESEvent('worker:scale:auth_failed', {
             reason: 'Missing or invalid X-TES-Dev-Token',
+          }, {
+            threadGroup: 'API_GATEWAY',
+            threadId: '0x2001',
+            channel: 'COMMAND_CHANNEL',
           });
           return errorResponse(
             'Unauthorized: X-TES-Dev-Token header required',
@@ -14098,6 +14306,10 @@ const devServer = Bun.serve<WebSocketData>({
             if (!isLocalhost || !isPort3002) {
               await logTESEvent('worker:scale:cors_blocked', {
                 origin,
+              }, {
+                threadGroup: 'API_GATEWAY',
+                threadId: '0x2001',
+                channel: 'COMMAND_CHANNEL',
               });
               return errorResponse(
                 'Forbidden: Origin not allowed',
@@ -14108,6 +14320,10 @@ const devServer = Bun.serve<WebSocketData>({
           } catch {
             await logTESEvent('worker:scale:cors_blocked', {
               origin: 'invalid',
+            }, {
+              threadGroup: 'API_GATEWAY',
+              threadId: '0x2001',
+              channel: 'COMMAND_CHANNEL',
             });
             return errorResponse(
               'Forbidden: Invalid origin',
@@ -14174,6 +14390,10 @@ const devServer = Bun.serve<WebSocketData>({
           await logTESEvent('worker:snapshot:auth_failed', {
             workerId: id,
             reason: 'Missing or invalid X-TES-Dev-Token',
+          }, {
+            threadGroup: 'API_GATEWAY',
+            threadId: '0x2001',
+            channel: 'COMMAND_CHANNEL',
           });
           return errorResponse(
             'Unauthorized: X-TES-Dev-Token header required',
@@ -14194,6 +14414,10 @@ const devServer = Bun.serve<WebSocketData>({
               await logTESEvent('worker:snapshot:cors_blocked', {
                 workerId: id,
                 origin,
+              }, {
+                threadGroup: 'API_GATEWAY',
+                threadId: '0x2001',
+                channel: 'COMMAND_CHANNEL',
               });
               return errorResponse(
                 'Forbidden: Origin not allowed',
@@ -14206,6 +14430,10 @@ const devServer = Bun.serve<WebSocketData>({
             await logTESEvent('worker:snapshot:cors_blocked', {
               workerId: id,
               origin: 'invalid',
+            }, {
+              threadGroup: 'API_GATEWAY',
+              threadId: '0x2001',
+              channel: 'COMMAND_CHANNEL',
             });
             return errorResponse(
               'Forbidden: Invalid origin',
@@ -14221,6 +14449,10 @@ const devServer = Bun.serve<WebSocketData>({
           await logTESEvent('worker:snapshot:rate_limited', {
             workerId: id,
             retryAfter: Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000),
+          }, {
+            threadGroup: 'API_GATEWAY',
+            threadId: '0x2001',
+            channel: 'COMMAND_CHANNEL',
           });
           const retryAfter = Math.ceil((rateLimitResult.resetAt - Date.now()) / 1000);
           const headers = new Headers(apiHeaders({
@@ -14259,6 +14491,10 @@ const devServer = Bun.serve<WebSocketData>({
           await logTESEvent('worker:snapshot:success', {
             workerId: id,
             duration: `${duration.toFixed(2)}ms`,
+          }, {
+            threadGroup: 'WORKER_POOL',
+            threadId: '0x3001',
+            channel: 'DATA_CHANNEL',
           });
         } else {
           // Log failure
@@ -14267,6 +14503,10 @@ const devServer = Bun.serve<WebSocketData>({
             workerId: id,
             status: response.status,
             error: errorText.substring(0, 200), // Limit error message length
+          }, {
+            threadGroup: 'WORKER_POOL',
+            threadId: '0x3001',
+            channel: 'DATA_CHANNEL',
           });
         }
         
@@ -14593,6 +14833,78 @@ const devServer = Bun.serve<WebSocketData>({
     // @BUN WebSocket upgrade handling with subprotocol negotiation
     // Handle WebSocket upgrade requests (not handled by routes object)
     const url = new URL(req.url);
+    
+    // TES-NGWS-001.5: Version Management WebSocket (Bun 1.3+ RFC 6455)
+    if (url.pathname === '/api/dev/version-ws') {
+      // === TES-NGWS-001.5.B.5: One-Time CSRF Token Validation ===
+      // Note: Browser WebSocket API doesn't support custom headers
+      // For dev server: Accept CSRF token as query parameter
+      // For production (Durable Objects): Validate via x-tes-ws-csrf-token header
+      const csrfToken = url.searchParams.get('csrf') || req.headers.get('x-tes-ws-csrf-token');
+      
+      if (!csrfToken) {
+        return new Response('CSRF token required [HSL:#FF4500]', { status: 403 });
+      }
+      
+      // Validate CSRF token (one-time check)
+      try {
+        const { verifyCsrfToken } = await import('./src/lib/csrf-guard.ts');
+        const isValid = await verifyCsrfToken(csrfToken);
+        
+        if (!isValid) {
+          return new Response('WS CSRF Invalid [HSL:#FF4500]', { status: 403 });
+        }
+        
+        // Mark token as used (one-time) - stored in memory for dev server
+        // In production, this would be stored in Durable Object storage
+        if (!globalThis.csrfUsedTokens) {
+          globalThis.csrfUsedTokens = new Set<string>();
+        }
+        if (globalThis.csrfUsedTokens.has(csrfToken)) {
+          return new Response('CSRF token already used [HSL:#FF4500]', { status: 403 });
+        }
+        globalThis.csrfUsedTokens.add(csrfToken);
+        // Clean up after 5 minutes
+        setTimeout(() => globalThis.csrfUsedTokens?.delete(csrfToken), 5 * 60 * 1000);
+      } catch (error) {
+        console.error('[Dev-Server] CSRF validation error:', error);
+        return new Response('CSRF validation failed [HSL:#FF0000]', { status: 500 });
+      }
+      
+      // === TES-NGWS-001.5.B.1: RFC 6455 Subprotocol Negotiation ===
+      const requestedProtocols = req.headers.get('Sec-WebSocket-Protocol');
+      const protocols = requestedProtocols ? requestedProtocols.split(',').map(p => p.trim()) : [];
+      
+      // Supported subprotocols (priority order) - match Durable Object defaults
+      const supportedProtocols = ['tes-ui-v2', 'tes-ui-v1'];
+      const selectedProtocol = protocols.find(p => supportedProtocols.includes(p)) || supportedProtocols[0];
+      
+      // === TES-NGWS-001.5.B.2: Header Override Validation (dev server) ===
+      const declaredHost = req.headers.get('host');
+      const expectedHost = url.hostname;
+      // For dev server, allow localhost variations
+      const isLocalhost = expectedHost === 'localhost' || expectedHost === '127.0.0.1';
+      if (declaredHost && !isLocalhost && declaredHost !== expectedHost) {
+        return new Response('Host Header Mismatch [HSL:#FF4500]', { status: 400 });
+      }
+      
+      // Upgrade to WebSocket with selected subprotocol
+      // Bun 1.3+ automatically negotiates permessage-deflate compression
+      if (server.upgrade(req, {
+        data: { 
+          pathname: url.pathname,
+          protocol: selectedProtocol,
+          csrfToken, // Store for logging
+        },
+        headers: {
+          'Sec-WebSocket-Protocol': selectedProtocol,
+        },
+      })) {
+        return; // Upgrade successful, websocket handlers will take over
+      }
+      return new Response('WebSocket upgrade failed', { status: 426 });
+    }
+    
     if (url.pathname.startsWith('/ws/')) {
       // @BUN Bun 1.3+ automatically negotiates permessage-deflate compression
       // Subprotocol negotiation: Client can request specific protocols
@@ -14636,13 +14948,66 @@ const devServer = Bun.serve<WebSocketData>({
   },
   // Error handler - catches unhandled errors in fetch handler
   // ✅ Fixed: CORS headers applied to error responses
-  // [#REF] https://bun.com/docs/runtime/http/server#practical-example-rest-api
+  // [#REF] https://bun.com/docs/runtime/http/error-handling#error-callback
+  // In development mode, Bun shows built-in error page with stack traces
+  // This handler supersedes Bun's default error page when provided
+  // Pattern from Bun docs:
+  //   error(error) {
+  //     return new Response(`<pre>${error}\n${error.stack}</pre>`, {
+  //       headers: { "Content-Type": "text/html" },
+  //     });
+  //   }
   error(error) {
-    console.error('Server error:', error);
-    const errorResp = errorResponse(
-      error instanceof Error ? error.message : String(error),
-      500
-    );
+    // Bun automatically prints syntax-highlighted error previews for unhandled exceptions/rejections
+    // For caught errors in our error handler, we use Bun.inspect() to simulate the same behavior
+    // This provides better debugging output with source code context in console logs
+    // [#REF] https://bun.com/docs/runtime/debugger#syntax-highlighted-source-code-preview
+    if (error instanceof Error) {
+      console.error('Server error:', Bun.inspect(error, { colors: true }));
+    } else {
+      console.error('Server error:', error);
+    }
+    
+    const isDev = IS_DEVELOPMENT;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    
+    // In development mode, return HTML error page with stack trace
+    // This matches Bun's built-in error page pattern
+    if (isDev) {
+      return new Response(
+        `<!DOCTYPE html>
+<html>
+<head>
+  <title>Server Error</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    h1 { color: #f48771; }
+    pre { background: #252526; padding: 15px; border-radius: 5px; overflow-x: auto; }
+    .error { color: #f48771; }
+    .stack { color: #ce9178; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Server Error</h1>
+  <div class="error">
+    <pre>${errorMessage}</pre>
+  </div>
+  ${errorStack ? `<div class="stack"><pre>${errorStack}</pre></div>` : ''}
+</body>
+</html>`,
+        {
+          status: 500,
+          headers: {
+            'Content-Type': 'text/html',
+            ...CORS_HEADERS,
+          },
+        }
+      );
+    }
+    
+    // In production mode, return JSON error response
+    const errorResp = errorResponse(errorMessage, 500);
     return appendCorsHeaders(errorResp);
   },
   // WebSocket handler - Handles WebSocket connections
@@ -14667,6 +15032,49 @@ const devServer = Bun.serve<WebSocketData>({
       // Route messages based on WebSocket path
       // @BUN Bun 1.3+ TypeScript: ws.data is now properly typed via Bun.Server<WebSocketData>
       const pathname = ws.data.pathname || '';
+      const protocol = (ws.data as any).protocol || 'tes-subproto-v1';
+      
+      // TES-OPS-004.B.8: Version Management WebSocket Handler
+      if (pathname === '/api/dev/version-ws') {
+        try {
+          // Bun 1.3+ Automatic permessage-deflate: Data is automatically decompressed
+          const messageData = typeof message === 'string' ? message : new TextDecoder().decode(message);
+          const parsed = JSON.parse(messageData);
+          
+          // Handle refresh/ping messages (tes-ui-v1 subprotocol)
+          if (parsed.type === 'refresh') {
+            // Trigger version entity reload
+            // In production, this would connect to Durable Object
+            // For dev server, we'll send a refresh response
+            ws.send(JSON.stringify({
+              type: 'refresh_response',
+              message: 'Refresh triggered',
+              hsl: '#9D4EDD',
+              threadId: '0x6001',
+              channel: 'COMMAND_CHANNEL',
+            }));
+          } else if (parsed.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong', hsl: '#9D4EDD' }));
+          } else if (parsed.type === 'bump') {
+            // Handle version bump via WebSocket (tes-subproto-v1)
+            // In production, this would be handled by Durable Object
+            // For dev server, we'll acknowledge and suggest using REST API
+            ws.send(JSON.stringify({
+              type: 'error',
+              error: 'WebSocket bumps not supported in dev mode. Use REST API /api/dev/bump-version',
+              hsl: '#FF0000',
+            }));
+          }
+        } catch (error) {
+          console.error('[WS-Version] Message error:', error);
+          ws.send(JSON.stringify({
+            type: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error',
+            hsl: '#FF0000',
+          }));
+        }
+        return;
+      }
       
       if (pathname.includes('/ws/spline-live')) {
         // Handle spline-live messages
@@ -15058,6 +15466,20 @@ const portSource = process.env.BUN_PORT ? 'BUN_PORT' : process.env.PORT ? 'PORT'
 console.log(`   Port: ${devServer.port} (from ${portSource} - Bun auto-handled)`);
 console.log(`   Hostname: ${HOSTNAME} (from ${process.env.HOSTNAME ? 'HOSTNAME' : 'default'})`);
 console.log(`   Idle Timeout: ${IDLE_TIMEOUT_SECONDS}s (from ${process.env.IDLE_TIMEOUT ? 'IDLE_TIMEOUT' : 'default'})`);
+
+// ✅ Worktree detection and logging (TES-OPS-004.B.8.16)
+try {
+  const { getWorktreeConfig } = await import('../src/lib/worktree-config.ts');
+  const worktreeConfig = getWorktreeConfig();
+  console.log(`\n🌳 Worktree Configuration:`);
+  console.log(`   Worktree: ${worktreeConfig.name}`);
+  console.log(`   Expected Dev Port: ${worktreeConfig.devServerPort}`);
+  console.log(`   Expected Worker Port: ${worktreeConfig.workerApiPort}`);
+  console.log(`   Tmux Session: ${worktreeConfig.tmuxSessionName}`);
+  console.log(`   Log Directory: ${worktreeConfig.logDirectory}`);
+} catch {
+  // Worktree config not available - skip logging
+}
 
 // Port conflict detection and warning
 if (devServer.port !== DEFAULT_PORT && !process.env.BUN_PORT && !process.env.PORT && !process.env.NODE_PORT) {

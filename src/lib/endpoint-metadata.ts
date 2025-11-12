@@ -364,6 +364,55 @@ export const ENDPOINT_METADATA: Record<string, EndpointMetadata> = {
     service: 'dev'
   },
   
+  '/api/dev/tmux/status': {
+    method: 'GET',
+    path: '/api/dev/tmux/status',
+    description: 'Get tmux session status',
+    responseSchema: {
+      type: 'object',
+      properties: {
+        online: { type: 'boolean' },
+        session: { type: 'string' },
+        panes: { type: 'array' },
+        services: { type: 'object' }
+      }
+    },
+    version: 'v1.01',
+    service: 'dev'
+  },
+  
+  '/api/dev/tmux/start': {
+    method: 'POST',
+    path: '/api/dev/tmux/start',
+    description: 'Start tmux session',
+    responseSchema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        session: { type: 'string' }
+      }
+    },
+    version: 'v1.01',
+    service: 'dev'
+  },
+  
+  '/api/dev/tmux/stop': {
+    method: 'POST',
+    path: '/api/dev/tmux/stop',
+    description: 'Stop tmux session',
+    responseSchema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean' },
+        message: { type: 'string' },
+        session: { type: 'string' }
+      }
+    },
+    version: 'v1.01',
+    service: 'dev'
+  },
+  
   '/api/dev/:endpoint': {
     method: 'GET',
     path: '/api/dev/:endpoint',

@@ -1,0 +1,51 @@
+name: Validate Worker Deployment
+
+on:
+  push:
+    paths:
+      - 'src/workers/**'
+      - 'src/version-management-do.ts'
+      - 'wrangler.toml'
+      - 'package.json'
+  pull_request:
+    paths:
+      - 'src/workers/**'
+      - 'src/version-management-do.ts'
+      - 'wrangler.toml'
+      - 'package.json'
+
+jobs:
+  validate-worker-build:
+    runs-on: ubuntu-latest
+    name: Validate Worker Build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Validate staging deployment
+        run: bun run validate:wrangler:staging
+        continue-on-error: false
+
+      - name: Validate production deployment
+        run: bun run validate:wrangler:production
+        continue-on-error: false
+
+      - name: Check for Bun-specific APIs
+        run: |
+          echo "Checking for Bun-specific APIs in worker code..."
+          if rg -i "Bun\.(env|CSRF|Crypto|write|file)" src/workers/ src/version-management-do.ts 2>/dev/null; then
+            echo "⚠️  Warning: Bun-specific APIs found in worker code"
+            echo "These may not work in Cloudflare Workers runtime"
+            exit 1
+          else
+            echo "✅ No Bun-specific APIs found in worker code"
+          fi
+

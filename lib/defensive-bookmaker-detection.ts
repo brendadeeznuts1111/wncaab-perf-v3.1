@@ -1,12 +1,12 @@
 /**
  * [@CORE] Defensive Bookmaker Detector v3.0: Unified High-Value Integration
- * 
+ *
  * [@BUN-API] Uses: Bun.Crypto, Bun.fetch, Bun.serve
  * [@INTEGRATION] P88 Partner API, PandBet/BetInAsia proxies
  * [@SECURITY] Signed: Ed25519 with audit trails
- * 
+ *
  * [DOMAIN:betting][SCOPE:arbitrage-asia-highvalue][META:p88-pandbet-feeds][SEMANTIC:exhaustion-rlm][TYPE:detector]
- * 
+ *
  * Unified detector supporting:
  * - Four-phase pattern detection (Steam → Hold → Absorption → Exhaustion)
  * - P88 Partner API integration (Asian Handicap, Virtual Sports)
@@ -310,7 +310,7 @@ export class P88Integration {
   async ingestBetTypeFeeds(marketId: string, sport: string, betType: BetType): Promise<UnifiedTickData[]> {
     // Build endpoint based on bet type
     let endpoint = `/odds?sport=${sport}&markets=total&api_key=${this.apiKey}`;
-    
+
     switch (betType) {
       case 'team-total':
         endpoint = `/odds?sport=${sport}&markets=team-totals&team=lakers&api_key=${this.apiKey}`;
@@ -537,7 +537,7 @@ export class DefensiveBookmakerDetector {
       pattern.betSpecifics = betSpecifics;
       pattern.correlationRisk = this.computeBetTypeCorrelationRisk(feedData, betType);
       pattern.complexityScore = this.computeComplexityScore(feedData, betType);
-      
+
       // Enhanced confidence with bet-type multipliers
       const betTypeThresholds = BET_TYPE_THRESHOLDS[betType];
       const betTimingThresholds = BET_TIMING_THRESHOLDS[pattern.betTiming || 'pregame'];
@@ -557,8 +557,8 @@ export class DefensiveBookmakerDetector {
       if (enforcement.auditTrail) {
         enforcement.auditTrail.forEach((entry, i) => {
           entry.hash = globalThis.BookmakerCore?.rapidHash.liquidityKey(
-            `${bookieId}:${marketId}`, 
-            entry.timestamp.toString(), 
+            `${bookieId}:${marketId}`,
+            entry.timestamp.toString(),
             i.toString()
           ).toString(36) || '';
         });
@@ -583,11 +583,11 @@ export class DefensiveBookmakerDetector {
       pattern.bookmakerTier = bookmakerProfile.tier;
       pattern.bookmakerClassification = BOOKMAKER_TIERS[bookmakerProfile.tier].classification;
       pattern.bookmakerLatency = BOOKMAKER_TIERS[bookmakerProfile.tier].typicalLatency;
-      
+
       // Adjust thresholds based on bookmaker tier
       const tierMultiplier = this.getTierMultiplier(bookmakerProfile.tier);
       pattern.exhaustionConfidence *= tierMultiplier;
-      
+
       // Tier-specific bet-type adjustments
       if (betType && bookmakerProfile.tier === 'TIER_1_SHARP') {
         // Sharp books have tighter bet-type thresholds
@@ -605,13 +605,13 @@ export class DefensiveBookmakerDetector {
       pattern.rgIndexDiff = rgIndexDiff(cacheOdds, streamOdds, bankroll);
       pattern.ruinRisk = pattern.rgIndexDiff.ruinRisk;
       pattern.rgCompliant = !pattern.rgIndexDiff.rgAlert && pattern.rgIndexDiff.ruinRisk < 2.5;
-      
+
       // RG-based bet-type adjustments
       if (betType && pattern.rgIndexDiff.rgAlert) {
         // Reduce confidence if RG alert triggered
         pattern.exhaustionConfidence *= 0.8;
       }
-      
+
       // Bet-type specific RG thresholds
       if (betType === 'same-game-parlay' && pattern.rgIndexDiff.ruinRisk > 1.5) {
         // SGPs have stricter RG thresholds
@@ -1142,256 +1142,4 @@ export class DefensiveBookmakerDetector {
   private identifyDefenderType(defensiveHold: any, absorption: any): DefenderType {
     // Enhanced classification logic
     if (defensiveHold.characteristics?.avgTick) {
-      const rounded = Math.round(defensiveHold.characteristics.avgTick * 100) / 100;
-      if (Math.abs(defensiveHold.characteristics.avgTick - rounded) < 0.001) {
-        return 'manual_trader';
-      }
-    }
-    if (defensiveHold.characteristics?.oscillationCount) {
-      const count = defensiveHold.characteristics.oscillationCount;
-      if (count >= 2 && count <= 4) {
-        return 'auto_risk_limit';
-      }
-    }
-    return 'liability_algo';
-  }
-
-  /**
-   * [@METHOD] Detect bet timing (live vs pregame)
-   */
-  private detectBetTiming(data: UnifiedTickData[]): BetTiming {
-    // Check for live indicators: rapid updates, game clock context
-    const avgUpdateDuration = this.calculateAverageUpdateDuration(data);
-    const isLive = avgUpdateDuration < 10000; // <10s updates = live
-    return isLive ? 'live' : 'pregame';
-  }
-
-  /**
-   * [@METHOD] Compute bet-type correlation risk
-   */
-  private computeBetTypeCorrelationRisk(data: UnifiedTickData[], betType: BetType): number {
-    const threshold = BET_TYPE_THRESHOLDS[betType];
-    if (!threshold) return 0.5;
-    
-    // Higher correlation risk for multi-leg bets
-    if (betType === 'same-game-parlay' || betType === 'parlay') {
-      return threshold.correlationThreshold;
-    }
-    
-    return threshold.correlationThreshold * 0.7; // Lower for single-leg bets
-  }
-
-  /**
-   * [@METHOD] Get bookmaker profile from registry
-   */
-  private getBookmakerProfile(bookieId: string): { tier: keyof typeof BOOKMAKER_TIERS; config: any } | null {
-    const config = BOOKMAKER_CONFIG[bookieId];
-    if (!config) return null;
-    
-    return {
-      tier: config.tier,
-      config,
-    };
-  }
-
-  /**
-   * [@METHOD] Get tier multiplier for confidence adjustment
-   */
-  private getTierMultiplier(tier: keyof typeof BOOKMAKER_TIERS): number {
-    const tierConfig = BOOKMAKER_TIERS[tier];
-    if (!tierConfig) return 1.0;
-    
-    // Sharp tiers (TIER_1) have higher confidence multipliers
-    switch (tier) {
-      case 'TIER_1_SHARP':
-        return 1.15; // 15% boost for sharp books
-      case 'TIER_2_EUROPEAN':
-        return 1.05; // 5% boost for European makers
-      case 'TIER_3_US_RECREATIONAL':
-        return 0.95; // 5% reduction for recreational (higher RG compliance)
-      case 'TIER_4_MANUAL':
-        return 0.90; // 10% reduction for manual (erratic)
-      default:
-        return 1.0;
-    }
-  }
-
-  /**
-   * [@METHOD] Compute complexity score
-   */
-  private computeComplexityScore(data: UnifiedTickData[], betType: BetType): number {
-    let complexity = 1; // Base complexity
-    
-    // Bet-type specific complexity
-    switch (betType) {
-      case 'same-game-parlay':
-        complexity = 7;
-        break;
-      case 'parlay':
-        complexity = 6;
-        break;
-      case 'teaser':
-        complexity = 5;
-        break;
-      case 'bought-points':
-        complexity = 4;
-        break;
-      case 'team-total':
-        complexity = 3;
-        break;
-      default:
-        complexity = 2;
-    }
-    
-    // Volatility adds complexity
-    const volatility = this.calculateVolatilityScore(data);
-    complexity += Math.floor(volatility * 3);
-    
-    return Math.min(10, complexity);
-  }
-}
-
-  /**
-   * [@METHOD] Query P88 API in parallel using worker pool
-   */
-  private async queryP88Parallel(endpoint: string, params: any): Promise<any> {
-    if (this.workerPool.length === 0 || !globalThis.BookmakerCore) {
-      // Fallback to direct fetch if workers unavailable
-      const baseUrl = Bun.env.P88_BASE_URL || 'https://api.p88.bet/partner';
-      const urlParams = new URLSearchParams(params);
-      const response = await fetch(`${baseUrl}${endpoint}?${urlParams}`, {
-        headers: { 'Authorization': `Bearer ${this.p88ApiKey}` },
-      });
-      return response.json();
-    }
-
-    // Send to worker pool and await response
-    const worker = this.workerPool[Math.floor(Math.random() * this.workerPool.length)];
-    
-    return globalThis.BookmakerCore.msg.awaitResponse(
-      worker,
-      `P88_QUERY:${endpoint}`,
-      { endpoint, params, apiKey: this.p88ApiKey }
-    );
-  }
-
-  /**
-   * [@METHOD] Detailed liquidity enforcement with P88 OAuth2.0
-   */
-  private async detailedLiquidityEnforcement(
-    bookieId: string,
-    marketId: string,
-    proposedStake: number,
-    userTier: 'bronze' | 'silver' | 'gold',
-    kellyEdge: number,
-    periods?: Array<'ht' | 'q1' | 'q2' | 'q3' | 'q4' | 'ft'>
-  ): Promise<{
-    tier: 'bronze' | 'silver' | 'gold';
-    qualifiedLimit: number;
-    multiplierApplied: number;
-    vetoTriggered: boolean;
-    scaledStake: number;
-    liquidityAvailable?: number;
-    auditTrail: Array<{ timestamp: number; action: 'query' | 'veto' | 'scale'; details: string; hash?: string }>;
-  }> {
-    const auditTrail: Array<{ timestamp: number; action: 'query' | 'veto' | 'scale'; details: string; hash?: string }> = [];
-    
-    // OAuth2.0 query with timing
-    const profileStart = globalThis.BookmakerCore?.timer.start() || Date.now();
-    const baseUrl = Bun.env.P88_BASE_URL || 'https://api.p88.bet/partner';
-    
-    const profileResp = await fetch(`${baseUrl}/partners/profile`, {
-      headers: { 
-        'Authorization': `Bearer ${this.p88ApiKey}`,
-        'X-Request-ID': globalThis.BookmakerCore?.rapidHash.liquidityKey(
-          bookieId, marketId, 'profile'
-        ).toString(36) || '',
-      },
-    });
-    
-    auditTrail.push({
-      timestamp: globalThis.BookmakerCore?.timer.now() || Date.now(),
-      action: 'query',
-      details: `Profile fetch: ${globalThis.BookmakerCore?.timer.end(profileStart) || 0}ms`,
-    });
-
-    const profile = await profileResp.json();
-    const qualifiedLimit = profile.tier_cap || (userTier === 'gold' ? 50000 : userTier === 'silver' ? 25000 : 10000);
-
-    // Veto dry-run with audit hash
-    const vetoHash = globalThis.BookmakerCore?.rapidHash.liquidityKey(
-      bookieId, marketId, `${proposedStake}:${userTier}`
-    ) || 0;
-    
-    const dryRunResp = await fetch(`${baseUrl}/bets/place?dry_run=true`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.p88ApiKey}`,
-        'X-Veto-Audit': vetoHash.toString(36),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ stake: proposedStake, periods, market_id: marketId }),
-    });
-
-    const dryRun = await dryRunResp.json();
-    
-    const multiplierApplied = dryRun.suggested_stake 
-      ? dryRun.suggested_stake / proposedStake 
-      : 1.0;
-    
-    auditTrail.push({
-      timestamp: globalThis.BookmakerCore?.timer.now() || Date.now(),
-      action: dryRun.approved ? 'scale' : 'veto',
-      details: dryRun.approved 
-        ? `Stake scaled: ${dryRun.suggested_stake || proposedStake}` 
-        : `Veto triggered: ${dryRun.reason || 'Liquidity limit exceeded'}`,
-    });
-
-    return {
-      tier: userTier,
-      qualifiedLimit,
-      multiplierApplied,
-      vetoTriggered: !dryRun.approved,
-      scaledStake: dryRun.suggested_stake || Math.min(proposedStake, qualifiedLimit),
-      liquidityAvailable: dryRun.liquidity_available,
-      auditTrail,
-    };
-  }
-
-  /**
-   * [@METHOD] P88 OAuth2.0 token refresh with worker pool
-   */
-  async refreshP88Token(): Promise<string> {
-    if (this.workerPool.length === 0 || !globalThis.BookmakerCore) {
-      // Fallback to direct fetch
-      const oauthUrl = Bun.env.P88_OAUTH_URL || 'https://api.p88.bet/oauth/token';
-      const response = await fetch(oauthUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          grant_type: 'client_credentials',
-          client_id: Bun.env.P88_CLIENT_ID,
-          client_secret: Bun.env.P88_CLIENT_SECRET,
-          scope: 'risk:limits-read liquidity:depth-query',
-        }),
-      });
-      const token = await response.json();
-      this.p88ApiKey = token.access_token;
-      return token.access_token;
-    }
-
-    // Use dedicated token worker
-    const worker = this.workerPool[0];
-    const token = await globalThis.BookmakerCore.msg.awaitResponse(
-      worker,
-      'P88_TOKEN_REFRESH',
-      { 
-        clientId: Bun.env.P88_CLIENT_ID, 
-        clientSecret: Bun.env.P88_CLIENT_SECRET,
-        oauthUrl: Bun.env.P88_OAUTH_URL || 'https://api.p88.bet/oauth/token',
-      }
-    );
-    
-    this.p88ApiKey = token.access_token;
-    return token.access_token;
-  }
+      const rounded = Math.round(defensiveHold.characteristics.avg

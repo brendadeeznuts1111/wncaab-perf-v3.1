@@ -1,0 +1,29 @@
+{
+  "name": "Sentinel Secure Dev",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/rocker-org/devcontainer-features/ripgrep:1": {}
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder}/.secrets.toml,target=/workspaces/.secrets.toml,type=bind,consistency=cached"
+  ],
+  "postCreateCommand": "bun install && chmod 600 .secrets.toml || true",
+  "remoteUser": "node",
+  "runArgs": ["--init", "--cap-drop=ALL"],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "biomejs.biome",
+        "redhat.vscode-yaml",
+        "GitHub.copilot"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}
+
+
+

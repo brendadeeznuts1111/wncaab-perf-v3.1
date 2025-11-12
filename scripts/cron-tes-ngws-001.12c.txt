@@ -1,0 +1,13 @@
+# TES-NGWS-001.12c: Cron Jobs
+
+# Daily (via cron @daily) - tmux Security Check
+0 2 * * * cd /opt/sentinel && ./scripts/daily-tmux-security-check.sh >> logs/security-audit.log 2>&1
+
+# Weekly (tmux cleanup) - Fix Session Names
+0 3 * * 0 cd /opt/sentinel && ./scripts/fix-tmux-session-names.sh >> logs/security-audit.log 2>&1
+
+# Monthly (secret rotation) - Atomic Secret Rotation
+# NOTE: Requires NEW_TELEGRAM_BOT_TOKEN environment variable set in crontab or systemd environment
+# For manual rotation: NEW_TELEGRAM_BOT_TOKEN="token" bun run scripts/rotate-secrets-atomic.ts
+0 4 1 * * cd /opt/sentinel && [ -n "$NEW_TELEGRAM_BOT_TOKEN" ] && bun run scripts/rotate-secrets-atomic.ts >> logs/security-audit.log 2>&1 || echo "Skipping rotation: NEW_TELEGRAM_BOT_TOKEN not set" >> logs/security-audit.log
+

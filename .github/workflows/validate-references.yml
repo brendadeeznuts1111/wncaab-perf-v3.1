@@ -1,0 +1,49 @@
+name: Validate Configuration References
+
+on:
+  push:
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+      - 'docs/TELEGRAM-CONFIG-TEMPLATE.md'
+  pull_request:
+    paths:
+      - '**/*.yaml'
+      - '**/*.yml'
+      - 'docs/TELEGRAM-CONFIG-TEMPLATE.md'
+
+jobs:
+  validate-references:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Validate references
+        run: |
+          chmod +x ./scripts/ref-validator.sh
+          if [ -f "./configs/telegram-config.yaml" ]; then
+            ./scripts/ref-validator.sh ./configs/telegram-config.yaml
+          else
+            echo "⚠️  No config file found at ./configs/telegram-config.yaml"
+            echo "Skipping validation (this is expected if config file doesn't exist yet)"
+          fi
+
+      - name: Generate reference docs
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -f "./configs/telegram-config.yaml" ]; then
+            ./scripts/ref-validator.sh ./configs/telegram-config.yaml REFERENCE.md
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add REFERENCE.md || echo "No changes to commit"
+            git commit -m "Update reference documentation [skip ci]" || echo "No changes to commit"
+            git push || echo "Nothing to push"
+          fi
+
+
+
+
+
+
+

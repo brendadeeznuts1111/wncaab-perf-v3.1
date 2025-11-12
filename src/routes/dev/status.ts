@@ -7,6 +7,7 @@
 
 import { getCpuLoad } from '../../lib/status-aggregator.ts';
 import { errorResponse } from '../../../../lib/headers.ts';
+import { inspectTESError } from '../../lib/tes-error-inspector.ts';
 
 export interface EnhancedStatusData {
   timestamp: string;
@@ -55,8 +56,9 @@ export async function getEnhancedStatus(): Promise<EnhancedStatusData> {
 
 /**
  * Status route handler
+ * @ticket TES-OPS-004.B.8.15 - Enhanced error inspection
  */
-export async function handleStatusRoute(): Promise<Response> {
+export async function handleStatusRoute(req?: Request): Promise<Response> {
   try {
     const status = await getEnhancedStatus();
     
@@ -67,11 +69,27 @@ export async function handleStatusRoute(): Promise<Response> {
       }
     });
   } catch (error) {
-    return errorResponse(
-      `Failed to get status: ${error instanceof Error ? error.message : String(error)}`,
-      500,
-      { domain: 'dev', scope: 'status', version: 'v2.0' }
-    );
+    // ✅ Enhanced error response with source preview
+    const inspectedError = inspectTESError(error, {
+      route: '/api/dev/status',
+      metrics: req ? { 
+        pendingRequests: (req as any).server?.pendingRequests || 0 
+      } : undefined
+    });
+    
+    console.error(inspectedError);
+    
+    return Response.json({
+      error: 'Status aggregation failed',
+      resolution: 'Check logs for source context',
+      debug: inspectedError
+    }, {
+      status: 503,
+      headers: { 
+        'X-TES-Debug': 'true',
+        'Content-Type': 'application/json'
+      }
+    });
   }
 }
 

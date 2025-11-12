@@ -240,3 +240,64 @@ export function checkETag(req: Request, etag: string): Response | null {
   return null;
 }
 
+/**
+ * Generate security headers for HTML responses (dashboard, etc.)
+ * 
+ * Implements comprehensive security headers:
+ * - Content-Security-Policy (CSP) - Prevents XSS, clickjacking, data injection
+ * - X-Frame-Options - Prevents clickjacking attacks
+ * - X-Content-Type-Options - Prevents MIME type sniffing
+ * - Referrer-Policy - Controls referrer information
+ * - Permissions-Policy - Restricts browser features
+ * - Strict-Transport-Security (HSTS) - HTTPS enforcement (production only)
+ * 
+ * @param isProduction - Whether running in production mode
+ * @param allowInlineScripts - Whether to allow inline scripts (dev mode only)
+ * @returns HeadersInit object with security headers
+ */
+export function securityHeaders(isProduction: boolean = false, allowInlineScripts: boolean = false): HeadersInit {
+  const headers: HeadersInit = {
+    // Content Security Policy - Prevents XSS, clickjacking, data injection
+    'Content-Security-Policy': isProduction
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+      : allowInlineScripts
+      ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:*; frame-ancestors 'self'; base-uri 'self'; form-action 'self';"
+      : "default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss: http://localhost:*; frame-ancestors 'self'; base-uri 'self'; form-action 'self';",
+    
+    // X-Frame-Options - Prevents clickjacking attacks
+    'X-Frame-Options': isProduction ? 'DENY' : 'SAMEORIGIN',
+    
+    // X-Content-Type-Options - Prevents MIME type sniffing
+    'X-Content-Type-Options': 'nosniff',
+    
+    // Referrer-Policy - Controls referrer information
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    
+    // Permissions-Policy - Restricts browser features
+    'Permissions-Policy': 'geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()',
+    
+    // X-XSS-Protection - Legacy XSS protection (deprecated but still used by some browsers)
+    'X-XSS-Protection': '1; mode=block',
+  };
+  
+  // Strict-Transport-Security (HSTS) - HTTPS enforcement (production only)
+  if (isProduction) {
+    headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains; preload';
+  }
+  
+  return headers;
+}
+
+/**
+ * Generate dashboard headers (security + content type)
+ * 
+ * @param isProduction - Whether running in production mode
+ * @returns HeadersInit object with dashboard headers
+ */
+export function dashboardHeaders(isProduction: boolean = false): HeadersInit {
+  return {
+    'Content-Type': 'text/html; charset=utf-8',
+    ...securityHeaders(isProduction, !isProduction), // Allow inline scripts in dev mode
+  };
+}
+

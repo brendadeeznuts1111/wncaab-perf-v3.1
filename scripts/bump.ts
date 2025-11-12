@@ -27,8 +27,10 @@
 
 import { getVersionRegistryLoader, type LoadedVersionEntity } from '../src/config/version-registry-loader.ts';
 import { incrementVersion } from '../src/config/version-files.ts';
+import { logTESEvent, type TESLogContext } from '../lib/production-utils.ts';
 import { join } from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, getRandomValues } from 'crypto';
+import { secrets } from 'bun';
 
 /**
  * Transaction state for atomic updates
@@ -55,46 +57,14 @@ interface BumpTransaction {
 }
 
 /**
- * Log TES event with rg-friendly format
- * Enhanced with transaction ID and entity details
+ * TES-OPS-004.B.3: Version Management Thread Context
+ * [META: THREAD-CONTEXT] VERSION_MANAGEMENT thread group (0x6000-0x6FFF External Services)
  */
-async function logTESEvent(
-  transactionId: string,
-  bumpType: 'major' | 'minor' | 'patch',
-  entityId: string | undefined,
-  entityBumps: Array<{ id: string; oldVersion: string; newVersion: string }>,
-  status: 'SUCCESS' | 'FAILURE',
-  errorDetails?: string
-): Promise<void> {
-  const timestamp = Date.now();
-  const isoTime = new Date().toISOString();
-  const user = process.env.USER || process.env.USERNAME || 'unknown';
-  
-  const logEntry = {
-    '[VERSION]': '[BUMP_TRANSACTION]',
-    '[BUMP_TRANSACTION_ID]': transactionId,
-    '[TYPE]': bumpType.toUpperCase(),
-    '[ENTITY_ID]': entityId || 'global:main',
-    '[STATUS]': status,
-    ...(status === 'FAILURE' && errorDetails ? { '[ERROR_DETAILS]': errorDetails } : {}),
-    '[ENTITY_BUMPED]': entityBumps.map(e => `${e.id},${e.oldVersion},${e.newVersion}`).join(';'),
-    '[USER]': user,
-    '[TS]': timestamp,
-  };
-
-  const logLine = `${isoTime} ${JSON.stringify(logEntry)}\n`;
-  
-  // Write to log file for rg indexing
-  try {
-    const logFile = Bun.file('logs/version-bumps.log');
-    await Bun.write(logFile, logLine, { createPath: true });
-  } catch (error) {
-    console.warn(`⚠️  Failed to write version bump log: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  
-  // Also log to console
-  console.log(JSON.stringify(logEntry));
-}
+const VERSION_MANAGEMENT_CONTEXT: TESLogContext = {
+  threadGroup: 'EXTERNAL_SERVICES', // Maps to EXTERNAL_SERVICES (#9D4EDD)
+  threadId: '0x6001',                // Version Management operations
+  channel: 'COMMAND_CHANNEL',        // Bump is a command-line operation
+};
 
 /**
  * Create backup directory for rollback
@@ -148,8 +118,112 @@ async function backupFile(filePath: string, backupDir: string): Promise<string |
 }
 
 /**
+ * TES-OPS-004.B.4: Load signing key for cryptographic signing
+ * Priority: Environment variable > Bun.secrets > Fallback to default (less secure)
+ */
+async function getSigningKey(): Promise<Uint8Array> {
+  // Try environment variable first (matches Cloudflare Workers secret)
+  const envKey = process.env.VERSION_SIGNING_KEY || Bun.env.VERSION_SIGNING_KEY;
+  if (envKey) {
+    return new TextEncoder().encode(envKey);
+  }
+
+  // Try Bun.secrets (OS credential store)
+  try {
+    const secret = await secrets.get({
+      service: 'tes-version-management',
+      name: 'signing-key',
+    });
+    if (secret) {
+      return new TextEncoder().encode(secret);
+    }
+  } catch {
+    // Secret not found, continue to fallback
+  }
+
+  // Fallback: Generate/store a local key (less secure for multi-instance scenarios)
+  // This ensures signing works even without explicit key configuration
+  const fallbackKeyPath = join(process.cwd(), '.bump_backups', '.signing-key');
+  const fallbackKeyFile = Bun.file(fallbackKeyPath);
+  
+  if (await fallbackKeyFile.exists()) {
+    const storedKey = await fallbackKeyFile.text();
+    return new TextEncoder().encode(storedKey);
+  }
+
+  // Generate new fallback key
+  const newKey = getRandomValues(new Uint8Array(32));
+  const keyHex = Array.from(newKey).map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  // Ensure directory exists
+  const backupDir = join(process.cwd(), '.bump_backups');
+  await Bun.write(fallbackKeyPath, keyHex);
+  
+  console.warn('⚠️  Using auto-generated signing key (stored locally).');
+  console.warn('   For production, set VERSION_SIGNING_KEY environment variable.');
+  console.warn('   Or use: bun run scripts/setup-version-secret.ts\n');
+  
+  return newKey;
+}
+
+/**
+ * TES-OPS-004.B.4: Sign manifest data using HMAC-SHA256
+ */
+async function signManifest(manifestData: object): Promise<string> {
+  const keyMaterial = await getSigningKey();
+  
+  // Import key for HMAC-SHA256
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyMaterial,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  // Create signature
+  const payload = JSON.stringify(manifestData);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  
+  // Return hex-encoded signature
+  return Array.from(new Uint8Array(signature))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * TES-OPS-004.B.4: Verify manifest signature
+ */
+export async function verifyManifestSignature(manifest: { signature?: string; [key: string]: any }): Promise<boolean> {
+  if (!manifest.signature) {
+    return false; // No signature = invalid
+  }
+
+  try {
+    // Extract signature and create manifest without it for verification
+    const { signature, ...manifestWithoutSig } = manifest;
+    const expectedSignature = await signManifest(manifestWithoutSig);
+    
+    // Constant-time comparison to prevent timing attacks
+    if (signature.length !== expectedSignature.length) {
+      return false;
+    }
+    
+    let result = 0;
+    for (let i = 0; i < signature.length; i++) {
+      result |= signature.charCodeAt(i) ^ expectedSignature.charCodeAt(i);
+    }
+    
+    return result === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Save transaction manifest to backup directory
  * Lists all backed up files for easy inspection and rollback
+ * TES-OPS-004.B.4: Now includes cryptographic signature
  */
 async function saveTransactionManifest(transaction: BumpTransaction, backupDir: string): Promise<void> {
   const manifest = {
@@ -166,8 +240,27 @@ async function saveTransactionManifest(transaction: BumpTransaction, backupDir: 
     }))
   };
   
+  // TES-OPS-004.B.4: Sign the manifest
+  const signature = await signManifest(manifest);
+  const signedManifest = {
+    ...manifest,
+    signature, // HMAC-SHA256 signature
+    signedAt: Date.now(),
+  };
+  
   const manifestPath = join(backupDir, '.manifest.json');
-  await Bun.write(manifestPath, JSON.stringify(manifest, null, 2));
+  await Bun.write(manifestPath, JSON.stringify(signedManifest, null, 2));
+  
+  // Log signature creation
+  await logTESEvent(
+    'bump:manifest:signed',
+    {
+      '[BUMP_TRANSACTION_ID]': transaction.id,
+      '[SIGNATURE_PREFIX]': signature.substring(0, 16),
+      '[SIGNED_AT]': signedManifest.signedAt,
+    },
+    VERSION_MANAGEMENT_CONTEXT
+  );
 }
 
 /**
@@ -541,12 +634,13 @@ async function listEntities(): Promise<void> {
     // Log validation failure
     const transactionId = randomUUID();
     await logTESEvent(
-      transactionId,
-      'patch', // Type doesn't matter for list
-      undefined,
-      [],
-      'FAILURE',
-      `Registry validation failed: ${validation.errors.join('; ')}`
+      'bump:list:validation_failed',
+      {
+        '[BUMP_TRANSACTION_ID]': transactionId,
+        '[BUMP_TYPE]': 'LIST',
+        '[ERROR_DETAILS]': `Registry validation failed: ${validation.errors.join('; ')}`,
+      },
+      VERSION_MANAGEMENT_CONTEXT
     );
     
     throw new Error('Cannot list entities: registry validation failed');
@@ -607,11 +701,14 @@ async function listEntities(): Promise<void> {
   // Log this action
   const transactionId = randomUUID();
   await logTESEvent(
-    transactionId,
-    'patch', // Type doesn't matter for list
-    undefined,
-    [],
-    'SUCCESS'
+    'bump:list:success',
+    {
+      '[BUMP_TRANSACTION_ID]': transactionId,
+      '[BUMP_TYPE]': 'LIST',
+      '[ENTITY_COUNT]': allEntities.length,
+      '[DISPLAYABLE_COUNT]': displayableEntities.length,
+    },
+    VERSION_MANAGEMENT_CONTEXT
   );
 }
 
@@ -669,6 +766,18 @@ async function bumpVersion(
     timestamp: Date.now(),
   };
 
+  // TES-OPS-004.B.3: Log transaction start
+  await logTESEvent(
+    'bump:transaction:start',
+    {
+      '[BUMP_TRANSACTION_ID]': transactionId,
+      '[BUMP_TYPE]': type.toUpperCase(),
+      '[ENTITY_ID]': entityId || 'global:main',
+      '[TARGET_TYPE]': entityId ? 'targeted' : 'global',
+    },
+    VERSION_MANAGEMENT_CONTEXT
+  );
+
   console.log(`\n🚀 TES Advanced Version Bump Utility\n`);
   if (options?.dryRun) {
     console.log(`🔍 DRY RUN MODE - No changes will be made\n`);
@@ -698,12 +807,14 @@ async function bumpVersion(
       
       // Log validation failure
       await logTESEvent(
-        transactionId,
-        type,
-        entityId,
-        [],
-        'FAILURE',
-        `Registry validation failed: ${validation.errors.join('; ')}`
+        'bump:transaction:validation_failed',
+        {
+          '[BUMP_TRANSACTION_ID]': transactionId,
+          '[BUMP_TYPE]': type.toUpperCase(),
+          '[ENTITY_ID]': entityId || 'global:main',
+          '[ERROR_DETAILS]': `Registry validation failed: ${validation.errors.join('; ')}`,
+        },
+        VERSION_MANAGEMENT_CONTEXT
       );
       
       process.exit(1);
@@ -778,11 +889,16 @@ async function bumpVersion(
       
       // Log dry run
       await logTESEvent(
-        transactionId,
-        type,
-        entityId,
-        transaction.affectedEntities,
-        'SUCCESS'
+        'bump:transaction:dry_run',
+        {
+          '[BUMP_TRANSACTION_ID]': transactionId,
+          '[BUMP_TYPE]': type.toUpperCase(),
+          '[ENTITY_ID]': entityId || 'global:main',
+          '[AFFECTED_ENTITIES]': transaction.affectedEntities.length,
+          '[FILES_PREPARED]': totalFilesPrepared,
+          '[TOTAL_MATCHES]': totalMatches,
+        },
+        VERSION_MANAGEMENT_CONTEXT
       );
       
       return;
@@ -791,6 +907,18 @@ async function bumpVersion(
     // Create backup directory
     const backupDir = await createBackup(transactionId);
     console.log(`📦 Backup directory: ${backupDir}\n`);
+
+    // TES-OPS-004.B.3: Log preparation start
+    await logTESEvent(
+      'bump:transaction:preparation_start',
+      {
+        '[BUMP_TRANSACTION_ID]': transactionId,
+        '[BUMP_TYPE]': type.toUpperCase(),
+        '[ENTITY_ID]': entityId || 'global:main',
+        '[AFFECTED_ENTITIES]': entityBumps.length,
+      },
+      VERSION_MANAGEMENT_CONTEXT
+    );
 
     // Phase 1: Prepare all file changes (read files, apply changes in memory)
     console.log('📋 Phase 1: Preparing file changes...\n');
@@ -840,13 +968,19 @@ async function bumpVersion(
     // Update manifest with committed status (backups persist for post-commit rollback)
     await saveTransactionManifest(transaction, backupDir);
 
-    // Log TES event
+    // TES-OPS-004.B.3: Log successful transaction commit
     await logTESEvent(
-      transactionId,
-      type,
-      entityId,
-      transaction.affectedEntities,
-      'SUCCESS'
+      'bump:transaction:committed',
+      {
+        '[BUMP_TRANSACTION_ID]': transactionId,
+        '[BUMP_TYPE]': type.toUpperCase(),
+        '[ENTITY_ID]': entityId || 'global:main',
+        '[AFFECTED_ENTITIES]': transaction.affectedEntities.length,
+        '[FILES_CHANGED]': transaction.fileChanges.length,
+        '[TOTAL_MATCHES]': totalMatches,
+        '[STATUS]': 'SUCCESS',
+      },
+      VERSION_MANAGEMENT_CONTEXT
     );
 
     console.log('\n✨ Version bump complete!');
@@ -861,14 +995,19 @@ async function bumpVersion(
     // Rollback transaction
     transaction.status = 'rolled-back';
     
-    // Log failure
+    // TES-OPS-004.B.3: Log transaction failure
     await logTESEvent(
-      transactionId,
-      type,
-      entityId,
-      transaction.affectedEntities,
-      'FAILURE',
-      error instanceof Error ? error.message : String(error)
+      'bump:transaction:failed',
+      {
+        '[BUMP_TRANSACTION_ID]': transactionId,
+        '[BUMP_TYPE]': type.toUpperCase(),
+        '[ENTITY_ID]': entityId || 'global:main',
+        '[AFFECTED_ENTITIES]': transaction.affectedEntities.length,
+        '[FILES_CHANGED]': transaction.fileChanges.length,
+        '[STATUS]': 'FAILURE',
+        '[ERROR_DETAILS]': error instanceof Error ? error.message : String(error),
+      },
+      VERSION_MANAGEMENT_CONTEXT
     );
 
     // Atomic rollback: restore all files from backups
@@ -928,14 +1067,18 @@ async function revertBump(backupDir: string): Promise<void> {
     }
   }
 
-  // Log revert event
+  // TES-OPS-004.B.3: Log revert event
   const revertTransactionId = randomUUID();
   await logTESEvent(
-    revertTransactionId,
-    'patch', // Type doesn't matter for revert
-    undefined,
-    [],
-    'SUCCESS'
+    'bump:revert:success',
+    {
+      '[BUMP_TRANSACTION_ID]': revertTransactionId,
+      '[BUMP_TYPE]': 'REVERT',
+      '[BACKUP_DIR]': backupDir,
+      '[FILES_RESTORED]': restoredCount,
+      '[STATUS]': 'SUCCESS',
+    },
+    VERSION_MANAGEMENT_CONTEXT
   );
 
   console.log(`\n✨ Revert complete!`);

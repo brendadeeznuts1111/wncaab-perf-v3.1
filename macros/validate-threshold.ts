@@ -6,6 +6,12 @@
  * Flags quantum malformations and validates bounds
  */
 
+/**
+ * Validation Threshold Version
+ * Canonical source for version used by /bump utility
+ */
+export const VERSION = 'v1.4.2';
+
 export interface ThresholdValidationResult {
   value: number;
   corrected: boolean;

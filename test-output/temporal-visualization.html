@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Temporal Veto Registry - Lifecycle Visualization</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+    .container { max-width: 1400px; margin: 0 auto; }
+    h1 { color: #4a9eff; margin-bottom: 2rem; }
+    h2 { color: #4a9eff; margin-top: 2rem; margin-bottom: 1rem; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .metric-card {
+      background: #2a2a2a;
+      padding: 1rem;
+      border-radius: 8px;
+      border-left: 4px solid #4a9eff;
+    }
+    .metric-label { font-size: 0.875rem; opacity: 0.7; }
+    .metric-value { font-size: 1.5rem; font-weight: bold; color: #4a9eff; }
+    .epoch-timeline {
+      margin-top: 2rem;
+    }
+    .epoch-item {
+      background: #2a2a2a;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border-radius: 8px;
+      border-left: 4px solid #4a9eff;
+    }
+    .epoch-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .epoch-id { font-weight: bold; color: #4a9eff; }
+    .epoch-duration { font-size: 0.875rem; opacity: 0.7; }
+    .flux-state {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+    .flux-stable { background: #44ff4433; color: #44ff44; }
+    .flux-accelerating { background: #ffaa0033; color: #ffaa00; }
+    .flux-decelerating { background: #ff660033; color: #ff6600; }
+    .flux-vetoed { background: #ff444433; color: #ff4444; }
+    .veto-events {
+      margin-top: 2rem;
+    }
+    .veto-item {
+      background: #ff444433;
+      padding: 1rem;
+      margin-bottom: 0.5rem;
+      border-radius: 8px;
+      border-left: 4px solid #ff4444;
+    }
+    .timestamp { font-family: monospace; opacity: 0.7; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🕐 Temporal Veto Registry - Lifecycle Visualization</h1>
+    
+    <div class="metrics">
+      <div class="metric-card">
+        <div class="metric-label">Total Epochs</div>
+        <div class="metric-value">2</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Total Vetoes</div>
+        <div class="metric-value" style="color: #ff4444">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Avg Flux Delta</div>
+        <div class="metric-value">-3042334.48ms</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Flux Range</div>
+        <div class="metric-value">-86400000 - 5000ms</div>
+      </div>
+    </div>
+
+    <h2>Epoch Timeline</h2>
+    <div class="epoch-timeline">
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span class="epoch-id">defensive-testing-bun-mock-time-mhut0cdc-hdthf7x</span>
+            <span class="epoch-duration">0ms</span>
+          </div>
+          <div class="timestamp">2025-11-11T16:47:00.000Z</div>
+          <div>
+            <span class="flux-state flux-stable">STABLE</span>
+            <span style="margin-left: 1rem; opacity: 0.7;">Δ: 0ms | V: 0.00</span>
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.875rem; opacity: 0.7;">
+            defensive-testing / bun-mock-time / visualization
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span class="epoch-id">defensive-testing-bun-mock-time-mhut0cdc-yk86ovj</span>
+            <span class="epoch-duration">-1000ms</span>
+          </div>
+          <div class="timestamp">2025-11-11T16:47:01.000Z</div>
+          <div>
+            <span class="flux-state flux-stable">STABLE</span>
+            <span style="margin-left: 1rem; opacity: 0.7;">Δ: 0ms | V: 0.00</span>
+          </div>
+          <div style="margin-top: 0.5rem; font-size: 0.875rem; opacity: 0.7;">
+            defensive-testing / bun-mock-time / visualization
+          </div>
+        </div>
+      
+    </div>
+
+    
+
+    <h2>Flux Transitions</h2>
+    <div class="epoch-timeline">
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837327ms | V: -837327.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837331ms | V: -837331.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837332ms | V: -837332.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T10:00:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -24420000ms | V: 0.97
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T10:00:05.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 5000ms | V: 4885.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T10:00:10.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 5000ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837333ms | V: -837333.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-10T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -86400000ms | V: 0.99
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837333ms | V: -837333.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837333ms | V: -837333.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837335ms | V: -837335.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837337ms | V: -837337.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837339ms | V: -837339.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837344ms | V: -837344.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837344ms | V: -837344.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837345ms | V: -837345.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>stable → accelerating</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: -837346ms | V: -837346.00
+          </div>
+        </div>
+      
+        <div class="epoch-item">
+          <div class="epoch-header">
+            <span>accelerating → stable</span>
+            <span class="timestamp">2025-11-11T16:47:00.000Z</span>
+          </div>
+          <div style="margin-top: 0.5rem;">
+            Δ: 0ms | V: 0.00
+          </div>
+        </div>
+      
+    </div>
+  </div>
+</body>
+</html>

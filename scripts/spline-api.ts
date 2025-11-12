@@ -12,6 +12,12 @@ import { SplineRenderer, SplineConfig } from './spline-renderer.ts';
 // ✅ Bun-native: Use Bun.env for CPU count, fallback to os.cpus() (standard API)
 import { cpus } from 'node:os';
 
+/**
+ * Spline API Version
+ * TES-OPS-004.A.1: Canonical version constant for /bump utility
+ */
+export const VERSION = 'v1.0';
+
 // Global renderer instance
 const renderer = new SplineRenderer();
 const liveClients: Set<WebSocket> = new Set();

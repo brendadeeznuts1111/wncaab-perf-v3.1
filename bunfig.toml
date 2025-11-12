@@ -1,7 +1,19 @@
-# bunfig.toml - BUN Macro Core v1.4 + Remote Index v14.2
+# bunfig.toml - BUN Macro Core v1.4 + Remote Index v14.2 + TES-NGWS-001 Flux-Veto
 
 # Bun v1.3.2 Immunity: Explicit linker/auto config for breaking change protection
 [IMMUNITY:hoisted-disable] # Grepable: immunity-hoisted-disable
+
+# ✅ CRITICAL: Disable .env auto-load in production
+# TES-NGWS-001.12c: Prevents false security positives
+[env]
+# Production: Disable auto-load (use Bun.secrets instead)
+file = false
+
+# Development: Use bunfig.development.toml with file = ".env"
+
+[bun]
+target = "bun"
+trust = ["cloudflare:kv", "bun:crypto", "bun:array", "bun:fetch"] # Native fetch for 1ms token latency
 
 [build]
 # Enable macro processing (Bun 1.4+)
@@ -9,7 +21,7 @@ macros = true
 # External dependencies (no vendor lock-in)
 external = ["bun:fetch"]
 # Trust Cloudflare KV and Bun crypto APIs for P88-PandBet high-value feeds
-trust = ["cloudflare:kv", "bun:crypto", "bun:array", "bun:fetch"]
+# trust already defined in [bun] section above
 
 [minify]
 # Enable syntax minification for DCE post-inlining
@@ -43,3 +55,51 @@ coverage = true
 [install]
 # Faster installs for CI
 exact = true
+
+# Console configuration for debugging nested objects
+# NowGoalTick and protocol analysis results have nested structures
+# Default depth: 2, increase for deeper inspection during debugging
+console.depth = 4
+
+[temporal.registry]
+# Temporal Veto Registry Configuration
+# Enterprise-grade clock mocking with AI-powered flux enforcement
+# Tags: [DOMAIN:defensive-testing][SCOPE:bun-mock-time][META:config-hydration][SEMANTIC:bunfig-toml][TYPE:config-schema][#REF]{BUN-CONFIG}
+
+# Maximum veto threshold before enforcement (default: 100)
+veto_threshold = 100
+
+# Enable AI-powered flux enforcement (default: true)
+enable_flux_enforcement = true
+
+# Enable epoch bundle signing (default: true)
+enable_epoch_signing = true
+
+# Enable flux history tracking (default: true)
+enable_flux_history = true
+
+# Maximum flux history entries (default: 1000)
+max_flux_history_entries = 1000
+
+# Default timezone for operations (default: America/New_York)
+default_timezone = "America/New_York"
+
+# Enable dark-mode visualizations (default: true)
+enable_dark_mode = true
+
+# TES-NGWS-001: NowGoal Flux + Veto Proxy (zero-npm, AI-verified)
+[feeds]
+nowgoal_base = "https://live.nowgoal26.com"
+jwt_endpoint = "/ajax/getwebsockettoken" # Regex-parsed token flux (rnum random)
+ws_proxy = "wss://live.nowgoal26.com/ws" # Aggregated depth/liquidity, AI-veto hooks
+
+[flux-enforcement]
+token_multiplier = 1.5 # AI-scaled for expiration depth (~60s €10K stake equiv)
+session_accept = true # Flag for Bearer parlay sims
+veto_key_endpoints = ["/ajax/getwebsockettoken", "/ws"] # Auto-veto low-depth crosses via bun.crypto signed audits
+scraped_rate_limit = 100 # Req/min for rnum flux
+tiered_token_caps = { bronze = 60, silver = 300, gold = 3600 } # s/token market, dynamic via proxy depth
+
+[ai-feedback]
+flux_intelligence = "adaptive" # Real-time Kelly scaling + imbalance drag on Bearer auth
+semantic_tags = ["[META:nowgoal-veto]", "[SEMANTIC:token-drain]"] # World-class metadata injection

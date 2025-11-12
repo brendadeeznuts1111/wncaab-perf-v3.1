@@ -118,6 +118,41 @@ export async function getJwtSecret(): Promise<string> {
 }
 
 /**
+ * Get or create Telegram bot token
+ * 
+ * Priority:
+ * 1. Bun.secrets (most secure)
+ * 2. Environment variable (TELEGRAM_BOT_TOKEN)
+ * 3. Bun.env (Bun-specific env)
+ * 
+ * Falls back to environment variable if secret not found
+ */
+export async function getTelegramBotToken(): Promise<string | null> {
+  // Try Bun.secrets first (most secure)
+  const secret = await getSecret("telegram-bot-token");
+  if (secret) {
+    return secret;
+  }
+  
+  // Fallback to environment variable
+  const envToken = process.env.TELEGRAM_BOT_TOKEN || Bun.env.TELEGRAM_BOT_TOKEN;
+  if (envToken) {
+    return envToken;
+  }
+  
+  return null;
+}
+
+/**
+ * Set Telegram bot token in Bun.secrets
+ * 
+ * @param token - Telegram bot token to store securely
+ */
+export async function setTelegramBotToken(token: string): Promise<void> {
+  await setSecret("telegram-bot-token", token);
+}
+
+/**
  * Initialize secrets on startup
  * 
  * Ensures all required secrets exist

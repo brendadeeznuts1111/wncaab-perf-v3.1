@@ -9,10 +9,17 @@
  * @module scripts/workers/worker-manager
  */
 
+/**
+ * Worker Management Version
+ * TES-OPS-004.A.1: Canonical version constant for /bump utility
+ */
+export const VERSION = '1.0.0';
+
 // Worker is a global in Bun, no need to import
 // import { Worker } from "bun";
 import { registerShutdownHandler } from "../../lib/process/compat.ts";
 import { log } from "../../lib/production-utils.ts";
+import { WORKER_API_PORT, WORKER_API_TIMEOUT } from "../../lib/constants.ts";
 
 // Type declaration for Worker (Bun global)
 declare const Worker: {
@@ -493,8 +500,43 @@ export async function handleWorkerScale(req: Request): Promise<{ created: number
  * Handle worker snapshot request
  */
 export async function handleWorkerSnapshot(req: Request, options: { id: string }): Promise<Response> {
-  // Stub implementation - implement actual snapshot logic
-  return new Response('Worker snapshot not available', { status: 503 });
+  const { id } = options;
+  
+  try {
+    // Proxy to Worker API if available
+    const response = await fetch(`http://localhost:${WORKER_API_PORT}/api/workers/snapshot/${id}`, {
+      signal: AbortSignal.timeout(WORKER_API_TIMEOUT),
+    });
+    
+    if (response.ok) {
+      // Return the snapshot stream from Worker API
+      return new Response(response.body, {
+        status: response.status,
+        headers: response.headers,
+      });
+    }
+    
+    // If Worker API returned an error, return it
+    return new Response(await response.text(), {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch (error) {
+    // Worker API not available - return helpful error message
+    return new Response(
+      JSON.stringify({
+        error: 'Worker snapshot not available',
+        message: 'Worker Telemetry API is not running. Start it with: bun run scripts/worker-telemetry-api.ts',
+        workerId: id,
+      }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+  }
 }
 
 /**

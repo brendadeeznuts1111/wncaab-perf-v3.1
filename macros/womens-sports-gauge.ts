@@ -5,6 +5,12 @@
  * 5-dimensional gauge that feeds the edge mapper with real-time betting data
  */
 
+/**
+ * Gauge API Version (WNBATOR)
+ * TES-OPS-004.A.1: Canonical version constant for /bump utility
+ */
+export const VERSION = '1.4.2';
+
 import { mapEdgeRelation } from '../macros/tension-map';
 
 export interface WNBATOR_Tensor {
