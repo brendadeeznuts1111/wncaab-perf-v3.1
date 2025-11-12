@@ -1,0 +1,33 @@
+[Unit]
+Description=TES Worker Telemetry API
+Documentation=https://github.com/brendadeeznuts1111/wncaab-perf-v3.1
+After=network.target
+
+[Service]
+Type=simple
+# User should be set to the actual user running the service
+# Example: User=www-data or User=deploy
+# For now, runs as current user (override with: systemctl edit tes-worker-telemetry.service)
+WorkingDirectory=/Users/nolarose/Documents/Production Apex- PERF v3.1 Immortal/APPENDIX
+Environment="NODE_ENV=production"
+Environment="TES_DEV_TOKEN=${TES_DEV_TOKEN:-dev-token-default}"
+ExecStart=/usr/local/bin/bun run scripts/worker-telemetry-api.ts
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Resource limits
+MemoryLimit=200M
+CPUQuota=50%
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/Users/nolarose/Documents/Production Apex- PERF v3.1 Immortal/APPENDIX/logs
+
+[Install]
+WantedBy=multi-user.target
+

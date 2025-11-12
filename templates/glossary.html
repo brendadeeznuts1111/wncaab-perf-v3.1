@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="version" content="2.1.02">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      padding: 30px;
+      background: #f8f9fa;
+    }
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .stat-value {
+      font-size: 2em;
+      font-weight: bold;
+      color: #667eea;
+    }
+    .search-container {
+      padding: 30px;
+      position: relative;
+    }
+    .search-input {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      font-size: 16px;
+      background: #f8f9fa;
+    }
+    .suggestions {
+      position: absolute;
+      top: 100%;
+      left: 30px;
+      right: 30px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      max-height: 300px;
+      overflow-y: auto;
+      z-index: 1000;
+      display: none;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .suggestion-item {
+      padding: 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #eee;
+    }
+    .suggestion-item:hover {
+      background: #f0f0f0;
+    }
+    .results {
+      padding: 30px;
+      max-height: 60vh;
+      overflow-y: auto;
+    }
+    .term-card {
+      background: white;
+      border-left: 4px solid #667eea;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .term-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 10px;
+    }
+    .term-name {
+      font-size: 1.5em;
+      color: #333;
+    }
+    .category-badge {
+      background: #667eea;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .filters {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+      padding: 0 30px;
+    }
+    .filter-btn {
+      padding: 8px 16px;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      border-radius: 20px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    .filter-btn:hover {
+      background: #667eea;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    }
+    .filter-btn.active {
+      background: #667eea;
+      color: white;
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
+    }
+    .filter-btn[data-category="bet-types"] {
+      border-color: #667eea;
+    }
+    .filter-btn[data-category="bet-types"].active {
+      background: #667eea;
+    }
+    .filter-btn[data-category="markets"] {
+      border-color: #f093fb;
+    }
+    .filter-btn[data-category="markets"].active {
+      background: #f093fb;
+      border-color: #f093fb;
+    }
+    .filter-btn[data-category="odds"] {
+      border-color: #4facfe;
+    }
+    .filter-btn[data-category="odds"].active {
+      background: #4facfe;
+      border-color: #4facfe;
+    }
+    .filter-btn[data-category="general"] {
+      border-color: #43e97b;
+    }
+    .filter-btn[data-category="general"].active {
+      background: #43e97b;
+      border-color: #43e97b;
+    }
+    .filter-btn[data-category="rg_compliance"] {
+      border-color: #fa709a;
+    }
+    .filter-btn[data-category="rg_compliance"].active {
+      background: #fa709a;
+      border-color: #fa709a;
+    }
+    .filter-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-left: 4px;
+    }
+    .filter-btn.active .filter-count {
+      background: rgba(255, 255, 255, 0.4);
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      padding: 0 30px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .sort-select {
+      padding: 8px 12px;
+      border: 2px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      background: white;
+      cursor: pointer;
+    }
+    .view-all-btn {
+      padding: 8px 16px;
+      background: #43e97b;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+    .view-all-btn:hover {
+      background: #2dd16a;
+      transform: translateY(-2px);
+    }
+    .related-terms {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid #eee;
+    }
+    .related-terms-title {
+      font-size: 12px;
+      color: #666;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .related-term-link {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
+      margin: 4px 4px 0 0;
+      background: linear-gradient(135deg, #f0f0f0 0%, #e8e8e8 100%);
+      color: #667eea;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s;
+      border: 1px solid transparent;
+    }
+    .related-term-link:hover {
+      background: linear-gradient(135deg, #667eea 0%, #5568d3 100%);
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+      border-color: #667eea;
+    }
+    .relationship-explorer {
+      margin-top: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border-left: 3px solid #667eea;
+    }
+    .relationship-type {
+      margin-bottom: 12px;
+    }
+    .relationship-type-label {
+      font-size: 11px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      margin-left: 10px;
+      background: #f0f0f0;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      color: #666;
+      transition: all 0.2s;
+    }
+    .copy-btn:hover {
+      background: #667eea;
+      color: white;
+    }
+    .keyboard-hint {
+      position: absolute;
+      right: 15px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 11px;
+      color: #999;
+      pointer-events: none;
+    }
+    @media (max-width: 768px) {
+      .container {
+        margin: 10px;
+        border-radius: 12px;
+      }
+      .header h1 {
+        font-size: 2em;
+      }
+      .stats {
+        grid-template-columns: 1fr;
+        padding: 20px;
+      }
+      .search-container {
+        padding: 20px;
+      }
+      .filters {
+        padding: 0 20px;
+      }
+      .controls {
+        padding: 0 20px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .results {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📚 Betting Glossary</h1>
+      <p>Comprehensive betting terminology reference</p>
+    </div>
+    
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="total-terms">-</div>
+        <div>Total Terms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="bet-types">-</div>
+        <div>Bet-Type Terms</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="rg-terms">-</div>
+        <div>RG Terms</div>
+      </div>
+    </div>
+    
+    <div class="search-container">
+      <div style="position: relative;">
+        <input 
+          type="text" 
+          id="search-input" 
+          class="search-input"
+          placeholder="Type to search (e.g., 'parlay', 'spread', 'vig')..."
+          autocomplete="off"
+        />
+        <span class="keyboard-hint">Press / to focus</span>
+      </div>
+      <div id="suggestions" class="suggestions"></div>
+    </div>
+    
+    <div class="filters" id="category-filters">
+      <button class="filter-btn active" data-category="all">
+        <span>All</span>
+        <span class="filter-count" id="filter-count-all">-</span>
+      </button>
+      <button class="filter-btn" data-category="bet-types">
+        <span>Bet Types</span>
+        <span class="filter-count" id="filter-count-bet-types">-</span>
+      </button>
+      <button class="filter-btn" data-category="markets">
+        <span>Markets</span>
+        <span class="filter-count" id="filter-count-markets">-</span>
+      </button>
+      <button class="filter-btn" data-category="odds">
+        <span>Odds</span>
+        <span class="filter-count" id="filter-count-odds">-</span>
+      </button>
+      <button class="filter-btn" data-category="general">
+        <span>General</span>
+        <span class="filter-count" id="filter-count-general">-</span>
+      </button>
+      <button class="filter-btn" data-category="rg_compliance">
+        <span>RG Compliance</span>
+        <span class="filter-count" id="filter-count-rg_compliance">-</span>
+      </button>
+    </div>
+    
+    <div class="controls">
+      <button class="view-all-btn" id="view-all-btn">📋 View All Terms</button>
+      <select class="sort-select" id="sort-select">
+        <option value="relevance">Sort by Relevance</option>
+        <option value="name">Sort by Name</option>
+        <option value="category">Sort by Category</option>
+        <option value="complexity">Sort by Complexity</option>
+      </select>
+    </div>
+    
+    <div id="results" class="results">
+      <div class="loading">Type to search for betting terms...</div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Import React-based glossary component - Bun will bundle this automatically
+    // SSR + React Architecture:
+    // 1. Server-side: HTMLRewriter injects data into HTML (already done)
+    // 2. Client-side: React component hydrates from data attributes (below)
+    // 3. Benefits: Fast initial render, SEO-friendly, progressive enhancement
+    
+    import { GlossarySearch } from './glossary-search-react.tsx';
+    
+    // Initialize component when DOM is ready
+    document.addEventListener('DOMContentLoaded', () => {
+      // Hydrate from server-side rendered data if available
+      const body = document.body;
+      const ssrEnabled = body.getAttribute('data-ssr') === 'true';
+      const initialStats = {
+        total: parseInt(body.getAttribute('data-total-terms') || '0', 10),
+        betTypes: parseInt(body.getAttribute('data-bet-types') || '0', 10),
+        rgTerms: parseInt(body.getAttribute('data-rg-terms') || '0', 10),
+      };
+      
+      if (ssrEnabled) {
+        console.log('[SSR] Server-side rendering detected');
+        console.log('[SSR] Initial stats:', initialStats);
+      }
+      
+      const app = new GlossarySearch({
+        searchInput: document.getElementById('search-input'),
+        suggestions: document.getElementById('suggestions'),
+        results: document.getElementById('results'),
+        stats: {
+          total: document.getElementById('total-terms'),
+          betTypes: document.getElementById('bet-types'),
+          rgTerms: document.getElementById('rg-terms'),
+        },
+        categoryFilters: document.getElementById('category-filters'),
+        viewAllBtn: document.getElementById('view-all-btn'),
+        sortSelect: document.getElementById('sort-select'),
+        filterCounts: {
+          all: document.getElementById('filter-count-all'),
+          betTypes: document.getElementById('filter-count-bet-types'),
+          markets: document.getElementById('filter-count-markets'),
+          odds: document.getElementById('filter-count-odds'),
+          general: document.getElementById('filter-count-general'),
+          rgCompliance: document.getElementById('filter-count-rg_compliance'),
+        },
+      });
+      
+      // Set initial stats from SSR if available (already rendered, but ensure consistency)
+      if (initialStats.total > 0) {
+        app.config.stats.total.textContent = initialStats.total.toString();
+        app.config.stats.betTypes.textContent = initialStats.betTypes.toString();
+        app.config.stats.rgTerms.textContent = initialStats.rgTerms.toString();
+      }
+      
+      // Make globally accessible for onclick handlers
+      window.glossarySearch = app;
+      
+      // Initialize React component (will hydrate from SSR data)
+      app.init();
+    });
+  </script>
+</body>
+</html>
+

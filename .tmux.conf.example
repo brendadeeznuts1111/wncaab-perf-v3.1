@@ -1,0 +1,111 @@
+# ──────────── TES-NGWS-001.12c: Secure tmux Configuration ────────────
+# Place this file in: ~/.tmux.conf
+# Reload config: Prefix + r (default: Ctrl+b, then r)
+
+# Force 256-color support for security highlighting
+set -g default-terminal "tmux-256color"
+set -ga terminal-overrides ",xterm-256color:Tc"
+
+# Enable mouse support (required for VS Code integration)
+set -g mouse on
+
+# ──────────── Security Hardening ────────────
+# Restrict socket file permissions (critical: prevents unauthorized access)
+set -g socket-file-permissions 0600
+
+# Disable external commands in status bar (prevents injection attacks)
+set -g status-left "#S"  # Show only session name
+set -g status-right "%H:%M"  # Show only time
+set -g status-left-length 40
+set -g status-right-length 40
+
+# Set restrictive umask for new files
+set -g umask 077
+
+# ──────────── Session Persistence (Critical for Cursor) ────────────
+# Auto-restore session on tmux server start
+set -g @plugin 'tmux-plugins/tmux-resurrect'
+set -g @plugin 'tmux-plugins/tmux-continuum'
+
+# Save session every 15 minutes
+set -g @continuum-save-interval '15'
+
+# Restore session automatically
+set -g @continuum-restore 'on'
+
+# Increase history limit for audit log review
+set -g history-limit 10000
+
+# Reduce escape delay (faster vim/nvim response)
+set -sg escape-time 10
+
+# ──────────── Window & Pane Management ────────────
+# Create windows with project-specific names
+bind-key c new-window -c "#{pane_current_path}" -n "shell"
+bind-key C-c new-window -c "#{pane_current_path}" -n "monitor"
+
+# Split panes with current directory
+bind-key - split-window -v -c "#{pane_current_path}"
+bind-key \ split-window -h -c "#{pane_current_path}"
+
+# Kill pane with confirmation (prevents accidents)
+bind-key x confirm-before -p "Kill pane #P? (y/n)" kill-pane
+
+# Sync panes (useful for multi-server deployment)
+bind-key y setw synchronize-panes \; display "Pane sync: #{?pane_synchronized,ON,OFF}"
+
+# ──────────── Navigation (matches VS Code) ────────────
+# Use Alt+hjkl to navigate panes
+bind-key -n M-h select-pane -L
+bind-key -n M-j select-pane -D
+bind-key -n M-k select-pane -U
+bind-key -n M-l select-pane -R
+
+# Use Alt+1-5 to switch windows
+bind-key -n M-1 select-window -t 1
+bind-key -n M-2 select-window -t 2
+bind-key -n M-3 select-window -t 3
+bind-key -n M-4 select-window -t 4
+bind-key -n M-5 select-window -t 5
+
+# ──────────── Sentinel-Specific Key Bindings ────────────
+# Quick access to security logs
+bind-key L run-shell "tmux split-window -h 'tail -f logs/headers-index.log | rg \"TES-NGWS-001.12c|SECURITY|ERROR\"'"
+
+# Run verification script
+bind-key V run-shell "tmux split-window -v 'bun run scripts/verify-secrets.ts; read -p \"Press Enter...\"'"
+
+# Monitor metrics
+bind-key M run-shell "tmux split-window -h 'watch -n 10 \"curl -s http://localhost:3000/metrics | grep sentinel_telegram\"'"
+
+# Quick session save (security: backup before changes)
+bind-key S run-shell "tmux save-buffer - /tmp/tmux-backup-#{session_name}-$(date +%Y%m%d%H%M%S)"
+
+# ──────────── Status Bar (High Contrast for Accessibility) ────────────
+set -g status on
+set -g status-interval 60
+set -g status-position bottom
+set -g status-bg colour234
+set -g status-fg colour137
+set -g status-left '#[fg=colour233,bg=colour241,bold] 🛡️  #S '
+set -g status-right '#[fg=colour233,bg=colour241] %Y-%m-%d #[fg=colour233,bg=colour245,bold] %H:%M:%S '
+
+# Visual pane borders (accessibility)
+setw -g pane-border-style fg=colour239,bg=default
+setw -g pane-active-border-style fg=colour208,bg=default
+
+# ──────────── Copy Mode (for Audit Log Review) ────────────
+# Use vim keys in copy mode
+setw -g mode-keys vi
+
+# Copy to system clipboard (macOS)
+bind-key -T copy-mode-vi v send-keys -X begin-selection
+bind-key -T copy-mode-vi y send-keys -X copy-pipe-and-cancel "pbcopy"
+
+# ──────────── Reload Config ────────────
+bind-key r source-file ~/.tmux.conf \; display "✅ tmux config reloaded"
+
+# ──────────── Plugin Manager (Keep at bottom) ────────────
+set -g @plugin 'tmux-plugins/tpm'
+set -g @plugin 'tmux-plugins/tmux-sensible'
+run '~/.tmux/plugins/tpm/tpm'

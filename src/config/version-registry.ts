@@ -330,6 +330,36 @@ export const VERSION_REGISTRY: VersionedEntity[] = [
       },
     ],
   },
+  {
+    id: 'component:tension-visualizer',
+    type: 'component',
+    currentVersion: '1.0.0',
+    displayName: 'Tension Visualizer',
+    description: 'Tension Mapping Visualizer - Real-time color generation visualizer for conflict, entropy, and tension mapping',
+    updateStrategy: 'linked-to-parent',
+    parentVersionId: 'global:main',
+    displayInUi: true,
+    files: [
+      {
+        path: 'src/config/component-versions.ts',
+        pattern: "export const TENSION_VISUALIZER_VERSION = '(\\d+\\.\\d+\\.\\d+)';",
+        replacement: "export const TENSION_VISUALIZER_VERSION = '$1';",
+        description: 'Tension Visualizer version constant',
+      },
+      {
+        path: 'templates/tension.html',
+        pattern: '<meta http-equiv="X-APEX-Version" content="(\\d+\\.\\d+\\.\\d+)">',
+        replacement: '<meta http-equiv="X-APEX-Version" content="$1">',
+        description: 'HTML meta version tag',
+      },
+      {
+        path: 'scripts/dev-server.ts',
+        pattern: "'X-APEX-Version':\\s*TENSION_VISUALIZER_VERSION",
+        replacement: "'X-APEX-Version': TENSION_VISUALIZER_VERSION",
+        description: 'Dev server route header version',
+      },
+    ],
+  },
 
   // ============================================================================
   // API SCOPE ENTITIES

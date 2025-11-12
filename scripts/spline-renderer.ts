@@ -4,6 +4,12 @@
  * Separated from API server to allow CLI usage without starting server
  */
 
+/**
+ * Spline API Version
+ * TES-OPS-004.A.1: Canonical version constant for /bump utility
+ */
+export const VERSION = '1.0.0';
+
 export interface SplinePoint {
   x: number;
   y: number;

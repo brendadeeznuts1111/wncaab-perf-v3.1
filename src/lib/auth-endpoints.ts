@@ -10,20 +10,70 @@ import { createSessionCookie } from "./cookie-factory.ts";
 import { generateCsrfToken, verifyCsrfFromRequest } from "./csrf-guard.ts";
 import { logSecurityEvent } from "./security-audit.ts";
 import { SECURITY_POLICY } from "../config/security-policy.ts";
+import { getJwtSecret } from "./secrets-manager.ts";
 
 /**
  * Generate a fresh JWT token
  * 
- * TODO: Implement actual JWT generation logic
+ * ✅ IMPLEMENTED: JWT generation using Bun crypto (zero-npm)
+ * Uses HS256 algorithm with secret from Bun.secrets or environment
  * 
  * @returns JWT token object
  */
 async function getFreshJwtToken(): Promise<{ token: string; expiresIn: number }> {
-  // Stub implementation - replace with actual JWT generation
-  const token = `jwt.${Date.now()}.${Math.random().toString(36).substring(7)}`;
+  const secret = await getJwtSecret();
+  const now = Math.floor(Date.now() / 1000);
+  const expiresIn = SECURITY_POLICY.jwt.cookie.maxAge;
+  const expiresAt = now + expiresIn;
+  
+  // JWT Header (HS256)
+  const header = {
+    alg: "HS256",
+    typ: "JWT"
+  };
+  
+  // JWT Payload
+  const payload = {
+    sub: "tes-auth-endpoint",
+    iat: now,
+    exp: expiresAt,
+    jti: crypto.randomUUID(), // JWT ID for uniqueness
+  };
+  
+  // Base64URL encode header and payload
+  const base64UrlEncode = (obj: any): string => {
+    const json = JSON.stringify(obj);
+    const base64 = btoa(json);
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  };
+  
+  const encodedHeader = base64UrlEncode(header);
+  const encodedPayload = base64UrlEncode(payload);
+  
+  // Create signature using HMAC-SHA256
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(secret);
+  const messageData = encoder.encode(signatureInput);
+  
+  // Use Bun's crypto.subtle for HMAC
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  
+  const signatureArray = await crypto.subtle.sign("HMAC", cryptoKey, messageData);
+  const signature = base64UrlEncode(Array.from(new Uint8Array(signatureArray)));
+  
+  // Construct JWT
+  const token = `${encodedHeader}.${encodedPayload}.${signature}`;
+  
   return {
     token,
-    expiresIn: SECURITY_POLICY.jwt.cookie.maxAge,
+    expiresIn,
   };
 }
 
@@ -57,10 +107,10 @@ export async function handleTokenAcquisition(request: Request): Promise<Response
   // Generate fresh JWT token
   const jwt = await getFreshJwtToken();
   
-  // Create secure session cookie
+  // Create secure session cookie (uses TES domain config automatically - TES-OPS-003.2)
   const sessionCookie = createSessionCookie(
     jwt.token,
-    ".nowgoal26.com",
+    undefined, // Use TES domain config default
     jwt.expiresIn
   );
   

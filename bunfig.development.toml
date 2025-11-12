@@ -1,0 +1,45 @@
+# bunfig.development.toml - Development Configuration
+# Use this for local development (allows .env auto-load)
+
+[env]
+# ✅ Allow auto-load in development for convenience
+file = ".env"
+
+# Copy other settings from bunfig.toml
+[build]
+macros = true
+external = ["bun:fetch"]
+trust = ["cloudflare:kv", "bun:crypto", "bun:array", "bun:fetch"]
+
+[minify]
+syntax = true
+
+[remote]
+index = "https://cdn.syndicate.com/wncaab-index.txt"
+fallback = "./.scan.index"
+validation = true
+timeout = 30000
+
+[debug]
+editor = "code"
+
+[run]
+preload = ["./src/ai/warmup.ts"]
+
+[test]
+coverage = true
+
+[install]
+exact = true
+
+console.depth = 4
+
+[temporal.registry]
+veto_threshold = 100
+enable_flux_enforcement = true
+enable_epoch_signing = true
+enable_flux_history = true
+max_flux_history_entries = 1000
+default_timezone = "America/New_York"
+enable_dark_mode = true
+

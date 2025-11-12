@@ -6,12 +6,15 @@
  * - POST /api/workers/scale         → Manual override
  * - WS   /ws/workers/telemetry      → Live RSS + queue
  * - GET  /api/workers/snapshot/:id → Download .heapsnapshot
+ * @ticket TES-OPS-004.B.8.16 - Worktree-aware port configuration
  */
 
 /// <reference types="bun-types" />
 
 import type { ServerWebSocket } from 'bun';
 import { Worker } from 'bun';
+import { getWorktreeConfig } from '../src/lib/worktree-config.ts';
+import { logTESEvent, type TESLogContext } from '../lib/production-utils.ts';
 
 interface WorkerState {
   id: string;
@@ -171,6 +174,19 @@ class WorkerRegistry {
         this.register(worker, id);
         created++;
         
+        // [META: WORKER-ASSIGN] Log worker assignment with thread context (0x3001)
+        logTESEvent('worker:assigned', {
+          workerId: id,
+          action: 'created',
+          timestamp: Date.now(),
+        }, {
+          threadGroup: 'WORKER_POOL',
+          threadId: '0x3001',
+          channel: 'COMMAND_CHANNEL',
+        }).catch((error) => {
+          console.warn(`[TES-WORKER] Failed to log worker assignment: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        
         // Send initial registration message
         worker.postMessage({ 
           type: 'register', 
@@ -194,6 +210,19 @@ class WorkerRegistry {
           this.workers.delete(id);
           this.workerInstances.delete(id);
           terminated++;
+          
+          // [META: WORKER-TERMINATE] Log worker termination with thread context (0x3001)
+          logTESEvent('worker:terminated', {
+            workerId: id,
+            action: 'terminated',
+            timestamp: Date.now(),
+          }, {
+            threadGroup: 'WORKER_POOL',
+            threadId: '0x3001',
+            channel: 'COMMAND_CHANNEL',
+          }).catch((error) => {
+            console.warn(`[TES-WORKER] Failed to log worker termination: ${error instanceof Error ? error.message : String(error)}`);
+          });
         }
       }
     }
@@ -412,8 +441,9 @@ const registry = new WorkerRegistry();
 
 // ✅ Fixed: CORS origin whitelist for worker telemetry (sensitive endpoint)
 // ✅ Bun-native: Case-insensitive matching using URL parsing (zero imports)
+// ✅ Worktree-aware: Include ports for both main and tmux-sentinel worktrees
 const ALLOWED_HOSTS = ['localhost', '127.0.0.1'];
-const ALLOWED_PORTS = ['3000', '3002'];
+const ALLOWED_PORTS = ['3000', '3002', '3003', '3004', '3005'];
 
 /**
  * Get CORS headers based on request origin
@@ -452,9 +482,19 @@ function getCorsHeaders(req: Request): HeadersInit {
   };
 }
 
+// ✅ Worktree-aware port configuration
+// Priority: WORKER_API_PORT env var > worktree config > default (3000)
+const worktreeConfig = getWorktreeConfig();
+const WORKER_API_PORT = parseInt(
+  process.env.WORKER_API_PORT || 
+  String(worktreeConfig.workerApiPort) || 
+  '3000',
+  10
+);
+
 // API Server
 const server = Bun.serve({
-  port: 3000,
+  port: WORKER_API_PORT,
   async fetch(req) {
     const url = new URL(req.url);
 

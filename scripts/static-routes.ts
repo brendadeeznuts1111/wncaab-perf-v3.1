@@ -208,6 +208,11 @@ export const STATIC_FILES: Array<StaticFileConfig> = [
     file: './public/index.html',
     immutable: false,
   },
+  {
+    path: '/color-palette.html',
+    file: './public/color-palette.html',
+    immutable: false,
+  },
 
   // Future files: Add one line here
   // Example:

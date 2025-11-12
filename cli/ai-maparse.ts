@@ -8,6 +8,12 @@
  * Now uses pure JS curve-detector.ts for pattern detection
  */
 
+/**
+ * AI Maparse Version
+ * TES-OPS-004.A.1: Canonical version constant for /bump utility
+ */
+export const VERSION = '1.4.2';
+
 import { detectCurves, type Point } from '../scripts/ai/curve-detector.ts';
 
 export interface PriceSeries {
