@@ -1,7 +1,7 @@
 # CHANGELOG.md - WNCAAB Performance v3.1+ Release History
 
 **Project**: WNCAAB Performance Visualization  
-**Current Version**: 3.1.0  
+**Current Version**: 3.1.1  
 **Bun Version**: >=1.3.0 (CI: 1.3.2)
 
 ---
@@ -10,7 +10,8 @@
 
 | Project Version | Bun Version | Date | Status |
 |----------------|-------------|------|--------|
-| v3.1.0 | >=1.3.0 | Nov 09, 2025 | ✅ Current |
+| v3.1.1 | >=1.3.0 | Nov 12, 2025 | ✅ Current |
+| v3.1.0 | >=1.3.0 | Nov 09, 2025 | ✅ Stable |
 | v3.2.0 | 1.3.2 | Nov 09, 2025 | ✅ Bunfig Integration |
 | v14.1.0 | 1.3.1 | Nov 09, 2025 | ✅ Index Generator |
 | v14.2.0 | 1.3.2 | Nov 09, 2025 | ✅ Remote Index |
@@ -31,6 +32,40 @@ See **[BUN-RELEASE-NOTES-ENHANCED.md](./BUN-RELEASE-NOTES-ENHANCED.md)** for the
 ---
 
 ## 📝 **Project Release History**
+
+### **v3.1.1** - TES-DEPLOY-001: Production-Hardened Deployment (Nov 12, 2025)
+
+**Bun Version**: >=1.3.0  
+**Status**: ✅ **PRODUCTION-READY**
+
+#### 🛡️ **Deployment Automation**
+- 4-layer protection stack (pre-deploy hook, CI/CD gate, static analysis, build validation)
+- Pre-deployment validation scripts with automatic checks
+- CI/CD workflow for worker validation (`.github/workflows/validate-worker.yml`)
+- Comprehensive deployment documentation and operator guides
+
+#### 🔒 **Security Enhancements**
+- CSRF token generation endpoint (Workers-compatible Web Crypto API)
+- Version registry DO routing fixes
+- Sec-WebSocket-Key validation error handling improvements
+- Header override validation for proxy trust boundaries
+
+#### 📚 **Documentation**
+- TES-DEPLOY-001 deployment guides
+- Operator quick reference (`docs/OPERATOR-QUICK-REF.md`)
+- Pre-production checklist (`docs/TES-DEPLOY-001-PRE-PRODUCTION-CHECKLIST.md`)
+- Executive summary and mission completion documentation
+
+#### ✅ **Verification**
+- All endpoints verified operational in staging
+- Multi-layer protection verified and active
+- Deployment automation battle-hardened
+
+**Epic**: TES-DEPLOY-001  
+**Tag**: `v3.1.1-tes-deploy-001`  
+**See**: `docs/TES-DEPLOY-001-EXECUTIVE-SUMMARY.md`
+
+---
 
 ### **v3.1.0** - Stable Release (December 29, 2024)
 
