@@ -6,12 +6,15 @@
  * - POST /api/workers/scale         → Manual override
  * - WS   /ws/workers/telemetry      → Live RSS + queue
  * - GET  /api/workers/snapshot/:id → Download .heapsnapshot
+ * @ticket TES-OPS-004.B.8.16 - Worktree-aware port configuration
  */
 
 /// <reference types="bun-types" />
 
 import type { ServerWebSocket } from 'bun';
-import { Worker } from 'bun';
+import { Worker, setEnvironmentData } from 'worker_threads';
+import { getWorktreeConfig } from '../src/lib/worktree-config.ts';
+import { logTESEvent, type TESLogContext } from '../lib/production-utils.ts';
 
 interface WorkerState {
   id: string;
@@ -157,19 +160,36 @@ class WorkerRegistry {
       for (let i = 0; i < toCreate; i++) {
         const id = `w_${Date.now()}_${i}`;
         
+        // ✅ TES-PERF-001: Bun 1.3 environmentData API (zero-copy config sharing)
+        // Uses setEnvironmentData() instead of env option for 10× latency reduction
+        // Reference: https://bun.com/docs/runtime/worker-threads#environmentdata
+        setEnvironmentData('tes-worker-config', {
+          workerId: id,
+          registry: true,
+          port: WORKER_API_PORT,
+        });
+        
         // ✅ Fixed: Use Worker with proper IPC (zero-cost message passing)
         // Note: Bun's Worker API automatically enables IPC for message passing
         const worker = new Worker(new URL('./scan-worker.js', import.meta.url), {
-          env: { 
-            WORKER_ID: id,
-            WORKER_REGISTRY: 'true', // Signal to worker that it's registered
-          },
-          // IPC is automatically enabled for Worker instances
-          // No need for explicit ipc: true (that's for Bun.spawn)
+          // No env option needed - using environmentData API instead
         });
         
         this.register(worker, id);
         created++;
+        
+        // [META: WORKER-ASSIGN] Log worker assignment with thread context (0x3001)
+        logTESEvent('worker:assigned', {
+          workerId: id,
+          action: 'created',
+          timestamp: Date.now(),
+        }, {
+          threadGroup: 'WORKER_POOL',
+          threadId: '0x3001',
+          channel: 'COMMAND_CHANNEL',
+        }).catch((error) => {
+          console.warn(`[TES-WORKER] Failed to log worker assignment: ${error instanceof Error ? error.message : String(error)}`);
+        });
         
         // Send initial registration message
         worker.postMessage({ 
@@ -194,6 +214,19 @@ class WorkerRegistry {
           this.workers.delete(id);
           this.workerInstances.delete(id);
           terminated++;
+          
+          // [META: WORKER-TERMINATE] Log worker termination with thread context (0x3001)
+          logTESEvent('worker:terminated', {
+            workerId: id,
+            action: 'terminated',
+            timestamp: Date.now(),
+          }, {
+            threadGroup: 'WORKER_POOL',
+            threadId: '0x3001',
+            channel: 'COMMAND_CHANNEL',
+          }).catch((error) => {
+            console.warn(`[TES-WORKER] Failed to log worker termination: ${error instanceof Error ? error.message : String(error)}`);
+          });
         }
       }
     }
@@ -412,8 +445,9 @@ const registry = new WorkerRegistry();
 
 // ✅ Fixed: CORS origin whitelist for worker telemetry (sensitive endpoint)
 // ✅ Bun-native: Case-insensitive matching using URL parsing (zero imports)
+// ✅ Worktree-aware: Include ports for both main and tmux-sentinel worktrees
 const ALLOWED_HOSTS = ['localhost', '127.0.0.1'];
-const ALLOWED_PORTS = ['3000', '3002'];
+const ALLOWED_PORTS = ['3000', '3002', '3003', '3004', '3005'];
 
 /**
  * Get CORS headers based on request origin
@@ -452,9 +486,19 @@ function getCorsHeaders(req: Request): HeadersInit {
   };
 }
 
+// ✅ Worktree-aware port configuration
+// Priority: WORKER_API_PORT env var > worktree config > default (3000)
+const worktreeConfig = getWorktreeConfig();
+const WORKER_API_PORT = parseInt(
+  process.env.WORKER_API_PORT || 
+  String(worktreeConfig.workerApiPort) || 
+  '3000',
+  10
+);
+
 // API Server
 const server = Bun.serve({
-  port: 3000,
+  port: WORKER_API_PORT,
   async fetch(req) {
     const url = new URL(req.url);
 

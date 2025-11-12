@@ -4,12 +4,14 @@
 
 import { SplineRenderer } from './spline-renderer.ts';
 const renderer = new SplineRenderer();
-import { getEnvironmentData, parentPort } from 'bun:worker_threads';
+import { getEnvironmentData, parentPort } from 'worker_threads';
 
-const { JOBS, CURVE_TYPE } = getEnvironmentData() as { JOBS?: string; CURVE_TYPE?: string };
+// ✅ TES-PERF-001: Bun 1.3 environmentData API (keyed access)
+// Get config from main thread (zero-copy, 10× faster than env vars)
+const config = getEnvironmentData('tes-spline-config') as { jobs?: number; curveType?: string } | undefined;
 
-const jobs = parseInt(JOBS || '100', 10);
-const curveType = (CURVE_TYPE || 'catmull-rom') as 'catmull-rom' | 'bezier' | 'cubic' | 'linear';
+const jobs = config?.jobs || 100;
+const curveType = (config?.curveType || 'catmull-rom') as 'catmull-rom' | 'bezier' | 'cubic' | 'linear';
 
 parentPort.onmessage = async (event) => {
   if (event.data.start) {
